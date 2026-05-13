@@ -4,8 +4,8 @@ import {
   getEnrollment,
   markLessonComplete,
   updateLastAccessed,
-  issueCertificate,
   getCourseStudents,
+  getMyCertificates,
 } from "../controllers/enrollment.controller.js";
 
 import {
@@ -23,6 +23,14 @@ router.get(
   authorizeRoles("student"),
   requireVerified,
   getMyEnrollments
+);
+
+router.get(
+  "/my-certificates",
+  protect,
+  authorizeRoles("student"),
+  requireVerified,
+  getMyCertificates
 );
 
 router.get(
@@ -56,35 +64,5 @@ router.get(
   authorizeRoles("creator", "admin"),
   getCourseStudents
 );
-
-router.post(
-  "/:courseId/issue-certificate",
-  protect,
-  authorizeRoles("creator", "admin"),
-  issueCertificate
-);
-router.get("/my-certificates", protect, authorizeRoles("student"), async (req, res) => {
-  try {
-    const enrollments = await Enrollment.find({
-      student: req.user._id,       // ← scoped to THIS student only
-      certificateIssued: true,     // ← only issued certificates
-    })
-      .populate({
-        path: "course",
-        select: "title creator stats thumbnail slug",
-        populate: {
-          path: "creator",
-          select: "name avatar",
-        },
-      })
-      .sort({ certificateIssuedAt: -1 }) // newest first
-      .lean();
- 
-    res.json({ enrollments });
-  } catch (err) {
-    console.error("my-certificates error:", err);
-    res.status(500).json({ message: "Server error" });
-  }
-});
 
 export default router;

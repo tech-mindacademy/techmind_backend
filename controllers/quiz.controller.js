@@ -3,7 +3,18 @@ import QuizAttempt from "../models/QuizAttempt.model.js";
 import Course from "../models/Course.model.js";
 import Enrollment from "../models/Enrollment.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
-import { notifyQuizPassed } from "../utils/notifications.utils.js";
+import { notifyQuizPassed, notifyCourseCompleted } from "../utils/notifications.utils.js";
+
+// ─── Helper: detect if a lesson belongs to a Final Quiz / Assessment section ──
+const FINAL_SECTION_PATTERN = /final\s*(quiz|assessment|exam|test)/i;
+
+const isFinalQuizLesson = (course, lessonId) => {
+  return course.sections.some(
+    (sec) =>
+      FINAL_SECTION_PATTERN.test(sec.title) &&
+      sec.lessons.some((l) => l._id.toString() === lessonId.toString())
+  );
+};
 
 // ─── Helper: verify creator owns the course the quiz belongs to ───────────────
 const verifyCreatorOwnership = async (courseId, userId, role) => {
@@ -21,7 +32,6 @@ const verifyCreatorOwnership = async (courseId, userId, role) => {
 
 // @route  POST /api/quizzes
 // @access Creator
-// Body: { courseId, lessonId, title, questions[], timeLimit, passMark, maxAttempts, shuffleQuestions, showAnswersAfter }
 export const createQuiz = asyncHandler(async (req, res, next) => {
   const {
     courseId, lessonId, title,
@@ -31,7 +41,6 @@ export const createQuiz = asyncHandler(async (req, res, next) => {
 
   await verifyCreatorOwnership(courseId, req.user._id, req.user.role);
 
-  // Validate questions array
   if (!questions || !Array.isArray(questions) || questions.length === 0) {
     return next(new AppError("At least one question is required.", 400));
   }
@@ -62,7 +71,6 @@ export const createQuiz = asyncHandler(async (req, res, next) => {
     showAnswersAfter: showAnswersAfter || "immediately",
   });
 
-  // Link quiz to lesson inside Course document
   await Course.findOneAndUpdate(
     { _id: courseId, "sections.lessons._id": lessonId },
     { $set: { "sections.$[].lessons.$[lesson].quiz": quiz._id } },
@@ -73,7 +81,7 @@ export const createQuiz = asyncHandler(async (req, res, next) => {
 });
 
 // @route  GET /api/quizzes/:quizId
-// @access Creator (full with answers) | Student (without correct answers unless showAnswersAfter)
+// @access Creator (full with answers) | Student (without correct answers)
 export const getQuiz = asyncHandler(async (req, res, next) => {
   const quiz = await Quiz.findById(req.params.quizId);
   if (!quiz) return next(new AppError("Quiz not found.", 404));
@@ -85,11 +93,10 @@ export const getQuiz = asyncHandler(async (req, res, next) => {
     return res.status(200).json({ success: true, quiz });
   }
 
-  // Strip correct answer data for students
   const safeQuiz = quiz.toObject();
   safeQuiz.questions = safeQuiz.questions.map((q) => ({
     ...q,
-    options: q.options.map((o) => ({ _id: o._id, text: o.text })), // hide isCorrect
+    options: q.options.map((o) => ({ _id: o._id, text: o.text })),
     correctAnswers: [],
     explanation: "",
   }));
@@ -126,7 +133,6 @@ export const deleteQuiz = asyncHandler(async (req, res, next) => {
     return next(new AppError("Not authorised.", 403));
   }
 
-  // Unlink from Course lesson
   await Course.findOneAndUpdate(
     { _id: quiz.lesson.courseId },
     { $set: { "sections.$[].lessons.$[lesson].quiz": null } },
@@ -140,14 +146,13 @@ export const deleteQuiz = asyncHandler(async (req, res, next) => {
 });
 
 // @route  GET /api/quizzes/lesson/:lessonId
-// @access Creator — all quizzes for a lesson
+// @access Creator
 export const getQuizByLesson = asyncHandler(async (req, res, next) => {
   const quiz = await Quiz.findOne({ "lesson.lessonId": req.params.lessonId });
   if (!quiz) return next(new AppError("No quiz found for this lesson.", 404));
   res.status(200).json({ success: true, quiz });
 });
 
-// ─── Creator: view all attempts for a quiz ────────────────────────────────────
 // @route  GET /api/quizzes/:quizId/attempts
 // @access Creator
 export const getQuizAttempts = asyncHandler(async (req, res, next) => {
@@ -174,14 +179,12 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
   const quiz = await Quiz.findById(req.params.quizId);
   if (!quiz) return next(new AppError("Quiz not found.", 404));
 
-  // Must be enrolled
   const enrollment = await Enrollment.findOne({
     student: req.user._id,
     course: quiz.lesson.courseId,
   });
   if (!enrollment) return next(new AppError("You are not enrolled in this course.", 403));
 
-  // Check attempt count
   if (quiz.maxAttempts > 0) {
     const attemptCount = await QuizAttempt.countDocuments({
       quiz: quiz._id,
@@ -193,7 +196,6 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
     }
   }
 
-  // If there's an existing in_progress attempt, return it
   const existing = await QuizAttempt.findOne({
     quiz: quiz._id,
     student: req.user._id,
@@ -206,7 +208,6 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
   const attemptNumber =
     (await QuizAttempt.countDocuments({ quiz: quiz._id, student: req.user._id })) + 1;
 
-  // Optionally shuffle questions
   let questions = [...quiz.questions];
   if (quiz.shuffleQuestions) {
     questions = questions.sort(() => Math.random() - 0.5);
@@ -221,7 +222,6 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
     startedAt: new Date(),
   });
 
-  // Return quiz questions without correct answers
   const safeQuestions = questions.map((q) => ({
     _id: q._id,
     questionText: q.questionText,
@@ -264,7 +264,6 @@ const gradeAttempt = (quiz, submittedAnswers) => {
     let isCorrect = false;
 
     if (question.questionType === "mcq") {
-      // All correct options must be selected, no incorrect ones
       const correctIds = question.options
         .filter((o) => o.isCorrect)
         .map((o) => o._id.toString())
@@ -275,12 +274,10 @@ const gradeAttempt = (quiz, submittedAnswers) => {
       isCorrect =
         correctIds.length === selectedIds.length &&
         correctIds.every((id, i) => id === selectedIds[i]);
-
     } else if (question.questionType === "true_false") {
       const correctId = question.options.find((o) => o.isCorrect)?._id?.toString();
       const selectedId = submitted.selectedOptions?.[0]?.toString();
       isCorrect = correctId === selectedId;
-
     } else if (question.questionType === "short_answer") {
       const normalised = submitted.textAnswer?.toLowerCase().trim();
       isCorrect = question.correctAnswers.some(
@@ -301,7 +298,6 @@ const gradeAttempt = (quiz, submittedAnswers) => {
   });
 
   const scorePercent = totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 0;
-
   return { gradedAnswers, totalPoints, earnedPoints, scorePercent };
 };
 
@@ -322,7 +318,7 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
   });
   if (!attempt) return next(new AppError("Active attempt not found.", 404));
 
-  // Run auto-grading
+  // Grade the attempt
   const { gradedAnswers, totalPoints, earnedPoints, scorePercent } = gradeAttempt(quiz, answers || []);
   const passed = scorePercent >= quiz.passMark;
 
@@ -334,16 +330,54 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
   attempt.submittedAt = new Date();
   attempt.timeTakenSeconds = timeTakenSeconds || 0;
   attempt.status = "graded";
-
   await attempt.save();
 
-  // Fire quiz passed notification (non-blocking)
-  if (passed) {
-    const course = await Course.findById(attempt.courseId).select("title _id").lean();
-    if (course) notifyQuizPassed(req.user, quiz.title, course, scorePercent, quiz.passMark);
-  }
+  // ── Certificate logic ────────────────────────────────────────────────────────
+  let certificateIssued = false;
 
-  // Build result payload — include explanations/correct answers based on showAnswersAfter setting
+  if (passed) {
+    // Load course with sections to check which section this lesson belongs to
+    const course = await Course.findById(quiz.lesson.courseId)
+      .select("sections title _id")
+      .lean();
+
+    if (course) {
+      // Fire quiz-passed notification (non-blocking)
+      notifyQuizPassed(req.user, quiz.title, course, scorePercent, quiz.passMark);
+
+      // Check if this quiz's lesson sits inside a Final Quiz / Assessment section
+      const isFinal = isFinalQuizLesson(course, quiz.lesson.lessonId);
+
+      if (isFinal) {
+        const enrollment = await Enrollment.findOne({
+          student: req.user._id,
+          course: course._id,
+        });
+
+        // Only issue once — don't overwrite if already issued
+        if (enrollment && !enrollment.certificateIssued) {
+          enrollment.certificateIssued = true;
+          enrollment.certificateIssuedAt = new Date();
+
+          if (!enrollment.isCompleted) {
+            enrollment.isCompleted = true;
+            enrollment.completedAt = new Date();
+          }
+
+          await enrollment.save();
+          certificateIssued = true;
+
+          // Fire course-completed notification (non-blocking)
+          notifyCourseCompleted(req.user, { _id: course._id, title: course.title });
+        } else if (enrollment?.certificateIssued) {
+          // Certificate was already issued from a previous passing attempt
+          certificateIssued = true;
+        }
+      }
+    }
+  }
+  // ── End certificate logic ────────────────────────────────────────────────────
+
   const showAnswers =
     quiz.showAnswersAfter === "immediately" ||
     (quiz.showAnswersAfter === "after_pass" && passed);
@@ -357,7 +391,7 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
           _id: q._id,
           questionText: q.questionText,
           questionType: q.questionType,
-          options: q.options, // includes isCorrect
+          options: q.options,
           correctAnswers: q.correctAnswers,
           explanation: q.explanation,
           points: q.points,
@@ -378,6 +412,8 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
       passMark: quiz.passMark,
       attemptNumber: attempt.attemptNumber,
       timeTakenSeconds: attempt.timeTakenSeconds,
+      // Frontend can use this to show a certificate banner / redirect
+      certificateIssued,
     },
     questions: resultQuestions,
   });

@@ -1,8 +1,38 @@
 import Course from "../models/Course.model.js";
 import Enrollment from "../models/Enrollment.model.js";
-import User from "../models/User.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
-import { notifyEnrollment, notifyCourseCompleted } from "../utils/notifications.utils.js";
+import { notifyEnrollment } from "../utils/notifications.utils.js";
+
+// ─── Helper: recalculate progress against current course structure ─────────────
+// Strips out completedLessons that no longer exist in the course,
+// then recomputes progressPercent. Mutates the enrollment doc in-place.
+// Call this any time the course structure may have changed.
+const syncProgress = (enrollment, course) => {
+  // Build a Set of all lesson IDs currently in the course
+  const validLessonIds = new Set(
+    course.sections.flatMap((sec) =>
+      sec.lessons.map((l) => l._id.toString())
+    )
+  );
+
+  const totalLessons = validLessonIds.size;
+
+  // Remove completed entries that are no longer in the course
+  enrollment.completedLessons = enrollment.completedLessons.filter((cl) =>
+    validLessonIds.has(cl.lesson.toString())
+  );
+
+  enrollment.progressPercent =
+    totalLessons > 0
+      ? Math.round((enrollment.completedLessons.length / totalLessons) * 100)
+      : 0;
+
+  // If progress dropped below 100% due to new lessons being added, un-complete the course
+  if (enrollment.progressPercent < 100) {
+    enrollment.isCompleted = false;
+    enrollment.completedAt = null;
+  }
+};
 
 // @route  POST /api/courses/:courseId/enroll
 // @access Student (free courses only — paid handled by Stripe)
@@ -29,7 +59,6 @@ export const enrollFree = asyncHandler(async (req, res, next) => {
 
   await Course.findByIdAndUpdate(course._id, { $inc: { "stats.totalStudents": 1 } });
 
-  // Fire notification - pass creator info separately so notification util can use it
   const courseForNotify = {
     _id: course._id,
     title: course.title,
@@ -47,22 +76,46 @@ export const getMyEnrollments = asyncHandler(async (req, res) => {
   const enrollments = await Enrollment.find({ student: req.user._id })
     .populate({
       path: "course",
-      select: "title slug thumbnail creator stats.totalLessons stats.totalDuration category level isFree price",
+      select: "title slug thumbnail creator stats.totalLessons stats.totalDuration category level isFree price sections",
       populate: { path: "creator", select: "name avatar" },
     })
     .sort({ createdAt: -1 });
+
+  // Sync and save any enrollment whose progress is stale
+  const savePromises = [];
+  for (const enrollment of enrollments) {
+    if (!enrollment.course) continue; // course was deleted
+    const before = enrollment.progressPercent;
+    syncProgress(enrollment, enrollment.course);
+    if (enrollment.progressPercent !== before) {
+      savePromises.push(enrollment.save());
+    }
+  }
+  if (savePromises.length) await Promise.all(savePromises);
 
   res.status(200).json({ success: true, enrollments });
 });
 
 // @route  GET /api/enrollments/:courseId
 // @access Student
+// Also heals stale progress on every fetch so the UI never shows > 100%
 export const getEnrollment = asyncHandler(async (req, res, next) => {
   const enrollment = await Enrollment.findOne({
     student: req.user._id,
     course: req.params.courseId,
   });
   if (!enrollment) return next(new AppError("Not enrolled in this course.", 404));
+
+  // Load current course structure to validate completed lessons
+  const course = await Course.findById(req.params.courseId).select("sections");
+  if (course) {
+    const before = enrollment.progressPercent;
+    syncProgress(enrollment, course);
+    if (enrollment.progressPercent !== before) {
+      await enrollment.save();
+    }
+  }
+
   res.status(200).json({ success: true, enrollment });
 });
 
@@ -72,11 +125,26 @@ export const markLessonComplete = asyncHandler(async (req, res, next) => {
   const { lessonId } = req.body;
   if (!lessonId) return next(new AppError("lessonId is required.", 400));
 
+  // Load course first so we can validate the lesson exists and sync progress
+  const course = await Course.findById(req.params.courseId).select("sections title");
+  if (!course) return next(new AppError("Course not found.", 404));
+
+  // Verify the lesson actually exists in the current course structure
+  const validLessonIds = new Set(
+    course.sections.flatMap((sec) => sec.lessons.map((l) => l._id.toString()))
+  );
+  if (!validLessonIds.has(lessonId.toString())) {
+    return next(new AppError("Lesson not found in this course.", 404));
+  }
+
   const enrollment = await Enrollment.findOne({
     student: req.user._id,
     course: req.params.courseId,
   });
   if (!enrollment) return next(new AppError("Not enrolled in this course.", 404));
+
+  // Sync first — prune any stale completed lessons from deleted content
+  syncProgress(enrollment, course);
 
   const alreadyDone = enrollment.completedLessons.some(
     (cl) => cl.lesson.toString() === lessonId.toString()
@@ -86,25 +154,23 @@ export const markLessonComplete = asyncHandler(async (req, res, next) => {
     enrollment.completedLessons.push({ lesson: lessonId });
     enrollment.lastAccessedLesson = lessonId;
 
-    const course = await Course.findById(req.params.courseId).select("sections title");
-    const totalLessons = course.sections.reduce((sum, s) => sum + s.lessons.length, 0);
-    enrollment.progressPercent = totalLessons > 0
-      ? Math.round((enrollment.completedLessons.length / totalLessons) * 100)
-      : 0;
+    // Recalculate against the validated total (syncProgress already pruned the list)
+    const totalLessons = validLessonIds.size;
+    enrollment.progressPercent =
+      totalLessons > 0
+        ? Math.round((enrollment.completedLessons.length / totalLessons) * 100)
+        : 0;
 
-    // Course completed
+    // Cap at 100 defensively
+    if (enrollment.progressPercent > 100) enrollment.progressPercent = 100;
+
     if (enrollment.progressPercent === 100 && !enrollment.isCompleted) {
       enrollment.isCompleted = true;
       enrollment.completedAt = new Date();
-      enrollment.certificateIssued = true;
-      enrollment.certificateIssuedAt = new Date();
-
-      // Fire completion notification (non-blocking)
-      notifyCourseCompleted(req.user, { _id: course._id, title: course.title });
     }
-
-    await enrollment.save();
   }
+
+  await enrollment.save();
 
   res.status(200).json({
     success: true,
@@ -147,45 +213,9 @@ export const getCourseEnrollments = asyncHandler(async (req, res, next) => {
   res.status(200).json({ success: true, count: enrollments.length, enrollments });
 });
 
-// @route  POST /api/enrollments/:courseId/issue-certificate
-// @access Creator (for their own course) | Admin
-export const issueCertificate = asyncHandler(async (req, res, next) => {
-  const { studentId } = req.body;
-  if (!studentId) return next(new AppError("studentId is required.", 400));
-
-  // Verify requester owns the course or is admin
-  const Course = (await import("../models/Course.model.js")).default;
-  const course = await Course.findById(req.params.courseId).select("creator title");
-  if (!course) return next(new AppError("Course not found.", 404));
-  if (req.user.role !== "admin" && course.creator.toString() !== req.user._id.toString()) {
-    return next(new AppError("Not authorized to issue certificates for this course.", 403));
-  }
-  console.log("USER:", req.user._id, req.user.role);
-console.log("COURSE CREATOR:", course.creator.toString());
-
-  const enrollment = await Enrollment.findOne({
-    student: studentId,
-    course: req.params.courseId,
-  });
-  if (!enrollment) return next(new AppError("Enrollment not found.", 404));
-
-  enrollment.certificateIssued = true;
-  enrollment.certificateIssuedAt = enrollment.certificateIssuedAt || new Date();
-  enrollment.isCompleted = true;
-  enrollment.completedAt = enrollment.completedAt || new Date();
-  await enrollment.save();
-
-  res.status(200).json({
-    success: true,
-    message: "Certificate issued successfully.",
-    certificateIssuedAt: enrollment.certificateIssuedAt,
-  });
-});
-
 // @route  GET /api/enrollments/:courseId/students
-// @access Creator (own course) | Admin — list students for certificate management
+// @access Creator (own course) | Admin
 export const getCourseStudents = asyncHandler(async (req, res, next) => {
-  const Course = (await import("../models/Course.model.js")).default;
   const course = await Course.findById(req.params.courseId).select("creator title");
   if (!course) return next(new AppError("Course not found.", 404));
   if (req.user.role !== "admin" && course.creator.toString() !== req.user._id.toString()) {
@@ -198,4 +228,21 @@ export const getCourseStudents = asyncHandler(async (req, res, next) => {
     .sort({ createdAt: -1 });
 
   res.status(200).json({ success: true, count: enrollments.length, enrollments });
+});
+
+// @route  GET /api/enrollments/my-certificates
+// @access Student
+export const getMyCertificates = asyncHandler(async (req, res) => {
+  const enrollments = await Enrollment.find({
+    student: req.user._id,
+    certificateIssued: true,
+  })
+    .populate({
+      path: "course",
+      select: "title slug thumbnail creator stats.totalLessons stats.totalDuration",
+      populate: { path: "creator", select: "name avatar" },
+    })
+    .sort({ certificateIssuedAt: -1 });
+
+  res.status(200).json({ success: true, enrollments });
 });
