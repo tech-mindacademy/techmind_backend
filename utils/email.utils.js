@@ -7,10 +7,18 @@ const transporter = nodemailer.createTransport({
   auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
 });
 
-export const sendEmail = async ({ to, subject, html }) => {
+export const sendEmail = async ({
+  to,
+  subject,
+ html,
+  attachments = [],
+}) => {
   await transporter.sendMail({
     from: `"${process.env.FROM_NAME || "Tech Vidya"}" <${process.env.FROM_EMAIL}>`,
-    to, subject, html,
+    to,
+    subject,
+    html,
+    attachments, // IMPORTANT
   });
 };
 

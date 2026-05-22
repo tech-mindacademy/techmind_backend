@@ -5,8 +5,8 @@ import {
   markLessonComplete,
   updateLastAccessed,
   getCourseStudents,
-  getMyCertificates,
 } from "../controllers/enrollment.controller.js";
+import { downloadCertificate, getMyCertificates } from "../controllers/certiicate1.controller.js";
 
 import {
   protect,
@@ -32,6 +32,8 @@ router.get(
   requireVerified,
   getMyCertificates
 );
+
+router.get("/:courseId/certificate", protect, authorizeRoles("student"), requireVerified, downloadCertificate);
 
 router.get(
   "/:courseId",

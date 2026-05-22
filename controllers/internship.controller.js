@@ -2,6 +2,8 @@ import Internship from "../models/Internship.model.js";
 import InternshipApplication from "../models/InternshipApplication.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { sendEmail } from "../utils/email.utils.js";
+import { appendApplicationToSheet, updateApplicationStatusInSheet } from "../utils/sheets.utils.js";
+import { generateOfferLetter } from "../utils/generateOfferLetter.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC
@@ -139,6 +141,17 @@ export const applyForInternship = asyncHandler(async (req, res, next) => {
     name, email, phone, college, degree, year,
     whyApply, skills, linkedIn, github,
   });
+  const pdfBuffer = await generateOfferLetter({
+  name,
+  position: internship.title,
+  company: internship.company,
+  role: internship.domain,
+  duration: internship.duration,
+  startDate: new Date(internship.lastDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+  date: new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }),
+  id: `TV-${application._id.toString().slice(-6).toUpperCase()}`,
+});
+  await appendApplicationToSheet(application, internship);
 
   // ── Notify admin by email ──────────────────────────────────────────────────
   try {
@@ -219,6 +232,13 @@ export const applyForInternship = asyncHandler(async (req, res, next) => {
   </table>
 </body>
 </html>`,
+attachments: [
+    {
+      filename: "Offer_Letter.pdf",
+      content: pdfBuffer,
+      contentType: "application/pdf",
+    }
+  ]
     });
   } catch (emailErr) {
     console.error("Email notification failed:", emailErr.message);
@@ -249,6 +269,8 @@ export const updateApplicationStatus = asyncHandler(async (req, res, next) => {
   const oldStatus = application.status;
   application.status = status;
   await application.save();
+
+  await updateApplicationStatusInSheet(application._id.toString(), status);
 
   // Send email to applicant only if status actually changed
   if (oldStatus !== status) {
