@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 
+
 import connectDB from "./config/db.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 
@@ -25,6 +26,7 @@ import heroImageRoutes from "./routes/HeroSlide.routes.js";
 connectDB();
 
 const app = express();
+
 
 app.use(helmet());
 app.use(cors({
@@ -52,6 +54,7 @@ const authLimiter = rateLimit({
 // Stripe webhook needs raw body — mount BEFORE express.json()
 // ✅ FIRST parse JSON
 app.use(express.json({ limit: "10mb" }));
+
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
