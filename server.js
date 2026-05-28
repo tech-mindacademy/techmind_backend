@@ -26,7 +26,7 @@ import heroImageRoutes from "./routes/HeroSlide.routes.js";
 connectDB();
 
 const app = express();
-
+app.set("trust proxy", 1);
 
 app.use(helmet());
 app.use(cors({
