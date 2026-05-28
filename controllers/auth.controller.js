@@ -151,11 +151,11 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
 export const logout = asyncHandler(async (req, res, next) => {
   // Clear the httpOnly refresh token cookie
   res.cookie("refreshToken", "", {
-    httpOnly: true,
-    expires: new Date(0),
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "strict" : "lax",
-  });
+  httpOnly: true,
+  expires: new Date(0),
+  secure: process.env.NODE_ENV === "production",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+});
 
   res.status(200).json({ success: true, message: "Logged out successfully." });
 });
