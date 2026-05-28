@@ -21,11 +21,11 @@ export const sendTokens = (res, user, statusCode, message) => {
 
   // Refresh token in secure httpOnly cookie (not accessible by JS)
   res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
-    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days in ms
-  });
+  httpOnly: true,
+  secure: true,
+  sameSite: "none",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+});
 
   // Strip sensitive fields from response
   const userData = {
