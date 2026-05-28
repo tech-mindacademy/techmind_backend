@@ -4,7 +4,25 @@ const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
   port: Number(process.env.SMTP_PORT) || 587,
   secure: process.env.SMTP_PORT === "465",
-  auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+
+  connectionTimeout: 60000,
+  greetingTimeout: 30000,
+  socketTimeout: 60000,
+
+  logger: true,
+  debug: true,
+});
+
+transporter.verify((err, success) => {
+  if (err) {
+    console.log("SMTP ERROR:", err);
+  } else {
+    console.log("SMTP READY");
+  }
 });
 
 export const sendEmail = async ({
@@ -14,7 +32,7 @@ export const sendEmail = async ({
   attachments = [],
 }) => {
   await transporter.sendMail({
-    from: `"${process.env.FROM_NAME || "Tech Vidya"}" <${process.env.FROM_EMAIL}>`,
+    from: `"${process.env.FROM_NAME || "Tech Mind Academy"}" <${process.env.FROM_EMAIL}>`,
     to,
     subject,
     html,
