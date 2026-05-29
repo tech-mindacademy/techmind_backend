@@ -149,13 +149,11 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
 // ─── @route  POST /api/auth/logout ───────────────────────────────────────────
 // @access Private
 export const logout = asyncHandler(async (req, res, next) => {
-  // Clear the httpOnly refresh token cookie
-  res.cookie("refreshToken", refreshToken, {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-});
+  res.clearCookie("refreshToken", {
+    httpOnly: true,
+    secure: true,
+    sameSite: "none",
+  });
 
   res.status(200).json({ success: true, message: "Logged out successfully." });
 });
