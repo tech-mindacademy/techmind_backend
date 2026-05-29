@@ -1,9 +1,14 @@
 import nodemailer from "nodemailer";
+import net from 'net';
+
+const socket = net.createConnection({ port: 465, host: 'smtp.gmail.com', family: 4 });
+socket.on('connect', () => console.log('Port 465 reachable ✅'));
+socket.on('error', (e) => console.log('Port 465 blocked ❌', e.message));
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
   port: 465,
-  secure: false,
+  secure: true,
 
   auth: {
     user: process.env.SMTP_USER,
