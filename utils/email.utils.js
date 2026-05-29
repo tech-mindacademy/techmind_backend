@@ -1,4 +1,3 @@
-import nodemailer from "nodemailer";
 import { google } from "googleapis";
 
 const oauth2Client = new google.auth.OAuth2(
@@ -11,30 +10,28 @@ oauth2Client.setCredentials({
   refresh_token: process.env.GMAIL_REFRESH_TOKEN,
 });
 
-const createTransporter = async () => {
-  const { token } = await oauth2Client.getAccessToken();
-
-  return nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      type: "OAuth2",
-      user: process.env.SMTP_USER,
-      clientId: process.env.GMAIL_CLIENT_ID,
-      clientSecret: process.env.GMAIL_CLIENT_SECRET,
-      refreshToken: process.env.GMAIL_REFRESH_TOKEN,
-      accessToken: token,
-    },
-  });
-};
-
 export const sendEmail = async ({ to, subject, html, attachments = [] }) => {
-  const transporter = await createTransporter();
-  await transporter.sendMail({
-    from: `"${process.env.FROM_NAME || "Tech Mind Academy"}" <${process.env.SMTP_USER}>`,
-    to,
-    subject,
+  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+
+  const lines = [
+    `From: "${process.env.FROM_NAME || "Tech Mind Academy"}" <${process.env.SMTP_USER}>`,
+    `To: ${to}`,
+    `Subject: ${subject}`,
+    `MIME-Version: 1.0`,
+    `Content-Type: text/html; charset=UTF-8`,
+    ``,
     html,
-    attachments,
+  ];
+
+  const raw = Buffer.from(lines.join("\r\n"))
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  await gmail.users.messages.send({
+    userId: "me",
+    requestBody: { raw },
   });
 };
 
