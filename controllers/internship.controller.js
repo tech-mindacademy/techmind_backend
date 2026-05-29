@@ -87,6 +87,7 @@ export const applyForInternship = asyncHandler(async (req, res, next) => {
       }),
       id: `TV-${application._id.toString().slice(-6).toUpperCase()}`,
     });
+    console.log("✅ PDF generated, size:", pdfBuffer?.length);
   } catch (pdfErr) {
     console.error("Offer letter generation failed:", pdfErr.message);
   }

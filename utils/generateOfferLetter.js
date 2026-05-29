@@ -88,6 +88,9 @@ export async function generateOfferLetter(data) {
     id,
     templatePath = path.join(__dirname, "../assets/offer_letter_template.pdf"),
   } = data;
+  console.log("__dirname:", __dirname);
+  console.log("Template path:", templatePath);
+  console.log("File exists:", fs.existsSync(templatePath));
 
   const templateBytes = fs.readFileSync(templatePath);
   const pdfDoc = await PDFDocument.load(templateBytes);
