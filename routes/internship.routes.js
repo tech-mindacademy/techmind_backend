@@ -17,9 +17,10 @@ import { updateApplicationStatus } from "../controllers/internship.controller.js
 const router = express.Router();
 
 // ── Public ──────────────────────────────────────────────────────────────────
+router.post("/apply-static", applyStatic);
 router.get("/", getAllInternships);
 router.get("/:id", getInternshipById);
-router.post("/apply-static", applyStatic);
+// router.post("/apply-static", applyStatic);
 router.post("/:id/apply", applyForInternship);
 
 // ── Admin ────────────────────────────────────────────────────────────────────
