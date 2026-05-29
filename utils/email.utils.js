@@ -13,21 +13,66 @@ oauth2Client.setCredentials({
 export const sendEmail = async ({ to, subject, html, attachments = [] }) => {
   const gmail = google.gmail({ version: "v1", auth: oauth2Client });
 
-  const lines = [
-    `From: "${process.env.FROM_NAME || "Tech Mind Academy"}" <${process.env.SMTP_USER}>`,
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    `MIME-Version: 1.0`,
-    `Content-Type: text/html; charset=UTF-8`,
-    ``,
-    html,
-  ];
+  let raw;
 
-  const raw = Buffer.from(lines.join("\r\n"))
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+  if (attachments.length === 0) {
+    // ── Simple HTML-only message (existing behaviour) ──────────────────────
+    const lines = [
+      `From: "${process.env.FROM_NAME || "Tech Mind Academy"}" <${process.env.SMTP_USER}>`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: text/html; charset=UTF-8`,
+      ``,
+      html,
+    ];
+    raw = Buffer.from(lines.join("\r\n"))
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  } else {
+    // ── Multipart message with attachments ────────────────────────────────
+    const boundary = `boundary_${Date.now()}`;
+
+    const lines = [
+      `From: "${process.env.FROM_NAME || "Tech Mind Academy"}" <${process.env.SMTP_USER}>`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      `MIME-Version: 1.0`,
+      `Content-Type: multipart/mixed; boundary="${boundary}"`,
+      ``,
+      `--${boundary}`,
+      `Content-Type: text/html; charset=UTF-8`,
+      `Content-Transfer-Encoding: quoted-printable`,
+      ``,
+      html,
+    ];
+
+    for (const attachment of attachments) {
+      const fileData = Buffer.isBuffer(attachment.content)
+        ? attachment.content.toString("base64")
+        : Buffer.from(attachment.content).toString("base64");
+
+      lines.push(
+        `--${boundary}`,
+        `Content-Type: ${attachment.contentType || "application/octet-stream"}; name="${attachment.filename}"`,
+        `Content-Transfer-Encoding: base64`,
+        `Content-Disposition: attachment; filename="${attachment.filename}"`,
+        ``,
+        // Split base64 into 76-char lines (RFC 2045 requirement)
+        fileData.match(/.{1,76}/g).join("\r\n")
+      );
+    }
+
+    lines.push(`--${boundary}--`);
+
+    raw = Buffer.from(lines.join("\r\n"))
+      .toString("base64")
+      .replace(/\+/g, "-")
+      .replace(/\//g, "_")
+      .replace(/=+$/, "");
+  }
 
   await gmail.users.messages.send({
     userId: "me",
