@@ -86,6 +86,20 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+app.get("/api/test-email", async (req, res) => {
+  try {
+    const { sendEmail } = await import("./utils/email.utils.js");
+    await sendEmail({
+      to: "techmindacademy70@gmail.com",
+      subject: "OAuth2 Test",
+      html: "<p>Gmail OAuth2 is working!</p>",
+    });
+    res.json({ success: true, message: "Email sent!" });
+  } catch (err) {
+    res.json({ success: false, error: err.message });
+  }
+});
+
 app.use("*", (req, res) => res.status(404).json({ success: false, message: "Route not found." }));
 app.use(errorHandler);
 
