@@ -1,50 +1,40 @@
 import nodemailer from "nodemailer";
-import net from 'net';
+import { google } from "googleapis";
 
-const socket = net.createConnection({ port: 465, host: 'smtp.gmail.com', family: 4 });
-socket.on('connect', () => console.log('Port 465 reachable ✅'));
-socket.on('error', (e) => console.log('Port 465 blocked ❌', e.message));
+const oauth2Client = new google.auth.OAuth2(
+  process.env.GMAIL_CLIENT_ID,
+  process.env.GMAIL_CLIENT_SECRET,
+  "https://developers.google.com/oauthplayground"
+);
 
-const transporter = nodemailer.createTransport({
-  host: "smtp.gmail.com",
-  port: 465,
-  secure: true,
-
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
-  },
-
-  family: 4,
-
-  tls: {
-    rejectUnauthorized: false,
-  },
-
-  logger: true,
-  debug: true,
+oauth2Client.setCredentials({
+  refresh_token: process.env.GMAIL_REFRESH_TOKEN,
 });
 
-transporter.verify((err, success) => {
-  if (err) {
-    console.log("SMTP ERROR:", err);
-  } else {
-    console.log("SMTP READY");
-  }
-});
+const createTransporter = async () => {
+  const { token } = await oauth2Client.getAccessToken();
 
-export const sendEmail = async ({
-  to,
-  subject,
- html,
-  attachments = [],
-}) => {
+  return nodemailer.createTransport({
+    service: "gmail",
+    auth: {
+      type: "OAuth2",
+      user: process.env.SMTP_USER,
+      clientId: process.env.GMAIL_CLIENT_ID,
+      clientSecret: process.env.GMAIL_CLIENT_SECRET,
+      refreshToken: process.env.GMAIL_REFRESH_TOKEN,
+      accessToken: token,
+    },
+  });
+};
+
+export const sendEmail = async ({ to, subject, html, attachments = [] }) => {
+  const transporter = await createTransporter();
   await transporter.sendMail({
-    from: `"${process.env.FROM_NAME || "Tech Mind Academy"}" <${process.env.FROM_EMAIL}>`,
+    from: `"${process.env.FROM_NAME || "Tech Mind Academy"}" <${process.env.SMTP_USER}>`,
     to,
     subject,
     html,
-    attachments, // IMPORTANT
+    attachments,
   });
 };
 
