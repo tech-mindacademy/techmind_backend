@@ -10,7 +10,7 @@ router.get("/public", async (req, res) => {
     const [students, creators, courses] = await Promise.all([
       User.countDocuments({ role: "student" }),
       User.countDocuments({ role: "creator" }),
-      Course.countDocuments({ status: "published" }),
+      Course.countDocuments({ approvalStatus: "approved" }),
     ]);
 
     res.json({ students, creators, courses });
