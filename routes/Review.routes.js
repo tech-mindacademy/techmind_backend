@@ -1,7 +1,7 @@
 import express from "express";
 import { body } from "express-validator";
 import { validate } from "../middleware/validate.middleware.js";
-import { protect, authorise } from "../middleware/auth.middleware.js";
+import { protect, authorizeRoles } from "../middleware/auth.middleware.js";
 import {
   createReview,
   getMyReviews,
