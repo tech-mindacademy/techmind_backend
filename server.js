@@ -22,6 +22,7 @@ import paymentRoutes    from "./routes/payment.routes.js";
 import internshipRoutes from "./routes/internship.routes.js";
 import certificateRoutes from "./routes/certificate.routes.js";
 import heroImageRoutes from "./routes/HeroSlide.routes.js";
+import reviewRoutes from "./routes/Review.routes.js";
 
 connectDB();
 
@@ -76,6 +77,7 @@ app.use("/api/coupons",     couponRoutes);
 app.use("/api/internships", internshipRoutes);
 app.use("/api/certificates", certificateRoutes);
 app.use("/api/hero-images", heroImageRoutes);
+app.use("/api/reviews", reviewRoutes);
 
 app.get("/api/health", (req, res) => {
   res.status(200).json({
