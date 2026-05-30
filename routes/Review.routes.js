@@ -9,7 +9,7 @@ import {
   deleteReview,
   getFeaturedReviews,
   getCourseReviews,
-} from "../controllers/review.controller.js";
+} from "../controllers/Review.controller.js";
 
 const router = express.Router();
 
