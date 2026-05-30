@@ -154,7 +154,7 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
 
             format: "m3u8",
 
-            expires_at: Math.floor(Date.now() / 1000) + 300,
+            expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 4,
           });
         }
 

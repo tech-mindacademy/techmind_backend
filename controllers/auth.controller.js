@@ -17,8 +17,8 @@ export const register = asyncHandler(async (req, res, next) => {
 
   // Prevent self-registering as admin
   // Creators register as students with a pending request — approved by admin before getting creator role
-  const safeRole = "student"; // Everyone starts as student
-  const creatorRequestStatus = role === "creator" ? "pending" : "none";
+const safeRole = role === "creator" ? "creator" : "student"; // Creators register directly
+const creatorRequestStatus = "none"; // No approval needed on signup
 
   // Check if email exists
   const existingUser = await User.findOne({ email });
@@ -51,9 +51,7 @@ export const register = asyncHandler(async (req, res, next) => {
 
   res.status(201).json({
     success: true,
-    message: role === "creator"
-      ? "Registration successful! Your creator account is pending admin approval. Please verify your email to continue."
-      : "Registration successful. Please check your email to verify your account.",
+    message: "Registration successful. Please check your email to verify your account.",
   });
 });
 
