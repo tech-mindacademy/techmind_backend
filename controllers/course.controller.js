@@ -171,17 +171,19 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
     }));
   }
   res.status(200).json({
-    success: true,
-    course: courseObj,
-    isEnrolled,
-    progress: enrollment
-      ? {
-          completedLessons: enrollment.completedLessons.length,
-          progressPercent: enrollment.progressPercent,
-          lastAccessedLesson: enrollment.lastAccessedLesson,
-        }
-      : null,
-  });
+  success: true,
+  course: courseObj,
+  isEnrolled,
+  enrollment: enrollment ? {
+    amountPaid: enrollment.amountPaid,
+    progressPercent: enrollment.progressPercent,
+    paymentMethod: enrollment.paymentMethod,
+  } : null,
+  progress: enrollment ? {
+    completedLessons: enrollment.completedLessons.length,
+    progressPercent: enrollment.progressPercent,
+    lastAccessedLesson: enrollment.lastAccessedLesson,
+  } : null,
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
