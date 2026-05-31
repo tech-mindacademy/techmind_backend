@@ -217,18 +217,21 @@ export const resolveRefund = asyncHandler(async (req, res, next) => {
   refund.resolvedBy = req.user._id;
   refund.resolvedAt = new Date();
 
-  if (action === "approve") {
-    refund.refundAmount =
-      refundAmount !== undefined
-        ? Math.min(Number(refundAmount), refund.amountPaid)
-        : refund.amountPaid;
+  // ✅ Fix — delete enrollment + decrement student count
+if (action === "approve") {
+  refund.refundAmount =
+    refundAmount !== undefined
+      ? Math.min(Number(refundAmount), refund.amountPaid)
+      : refund.amountPaid;
 
-    // Revoke enrollment access
-    await Enrollment.findByIdAndUpdate(refund.enrollment, {
-      amountPaid: 0,
-      paymentMethod: "refunded",
-    });
-  }
+  // Delete the enrollment entirely
+  await Enrollment.findByIdAndDelete(refund.enrollment);
+
+  // Decrement course student count
+  await Course.findByIdAndUpdate(refund.course, {
+    $inc: { "stats.totalStudents": -1 },
+  });
+}
 
   await refund.save();
 
