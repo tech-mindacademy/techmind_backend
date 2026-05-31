@@ -34,7 +34,7 @@ app.set("trust proxy", 1);
 app.use(helmet());
 app.use(cors({
   origin: [
-    "https://techmind-frontend-h2cy.vercel.app",
+    process.env.CLIENT_URL,
     "http://localhost:5173"
   ],
   credentials: true,
