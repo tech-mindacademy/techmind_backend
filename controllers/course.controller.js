@@ -185,6 +185,7 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
     lastAccessedLesson: enrollment.lastAccessedLesson,
   } : null,
 });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CREATOR ENDPOINTS
