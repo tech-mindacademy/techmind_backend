@@ -7,7 +7,7 @@ import {
   sendRefundAlertEmailToAdmin,
   sendRefundApprovedEmailToStudent,
   sendRefundRejectedEmailToStudent,
-} from "../utils/refundEmail.utils.js";
+} from "../utils/refundEmail.util.js";
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
 const MAX_PROGRESS_FOR_REFUND = 20; // cannot have completed ≥ 20% of course
