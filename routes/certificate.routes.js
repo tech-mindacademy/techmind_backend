@@ -5,6 +5,7 @@ import {
   verifyCertificatePayment,
   getAllCertificateOrders,
   updateCertificateStatus,
+  adminIssueCertificate,
 } from "../controllers/certificate.controller.js";
 import { protect, authorizeRoles } from "../middleware/auth.middleware.js";
 
@@ -18,5 +19,6 @@ router.post("/verify-payment", verifyCertificatePayment);
 // ── Admin ────────────────────────────────────────────────────────────────────
 router.get("/admin/orders", protect, authorizeRoles("admin"), getAllCertificateOrders);
 router.patch("/admin/orders/:id/status", protect, authorizeRoles("admin"), updateCertificateStatus);
+router.post("/admin/issue", protect, authorizeRoles("admin"), adminIssueCertificate);
 
 export default router;

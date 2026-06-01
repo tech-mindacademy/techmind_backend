@@ -306,3 +306,97 @@ export const updateCertificateStatus = asyncHandler(async (req, res, next) => {
   if (!order) return next(new AppError("Order not found.", 404));
   res.json({ success: true, order });
 });
+// POST /api/certificates/admin/issue
+export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
+  const { name, email, phone, courseName, courseType, completionDate, certificateType } = req.body;
+
+  if (!name || !email || !phone || !courseName || !courseType || !completionDate || !certificateType) {
+    return next(new AppError("All fields are required.", 400));
+  }
+
+  const certNumber = `TV-CERT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
+
+  // Save to DB (amount 0 — admin issued)
+  const certOrder = await CertificateOrder.create({
+    name, email, phone, courseName, courseType, completionDate, certificateType,
+    amount: 0,
+    paymentStatus: "paid",
+    certificateStatus: "processing",
+    certificateNumber: certNumber,
+  });
+
+  // Fill PDF
+  let pdfBytes;
+  try {
+    const fakeEnrollment = {
+      course:              { title: certOrder.courseName },
+      createdAt:           new Date(certOrder.completionDate),
+      certificateIssuedAt: new Date(certOrder.completionDate),
+      _id:                 certOrder._id,
+    };
+    pdfBytes = await fillCertificate(fakeEnrollment, { name: certOrder.name });
+    await CertificateOrder.findByIdAndUpdate(certOrder._id, { certificateStatus: "issued" });
+  } catch (err) {
+    console.error("PDF generation failed:", err.message);
+    return next(new AppError("Certificate generation failed.", 500));
+  }
+
+  // Send email
+  const certLabel = { completion: "Certificate of Completion", excellence: "Certificate of Excellence", participation: "Certificate of Participation" }[certificateType];
+  const safeName  = name.replace(/\s+/g, "_");
+
+  try {
+    await sendEmail({
+      to:      email,
+      subject: `🎓 Your ${certLabel} — ${courseName}`,
+      html: `
+<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Inter,system-ui,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+        <tr><td style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:28px 32px">
+          <p style="margin:0;font-size:22px;font-weight:700;color:#fff">Tech Mind Academy</p>
+        </td></tr>
+        <tr><td style="padding:32px">
+          <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e293b">Payment Successful! 🎉</h1>
+          <p style="margin:0 0 20px;font-size:15px;color:#475569;line-height:1.6">Hi ${certOrder.name}, your payment of <strong>₹${certOrder.amount}</strong> has been received and your certificate is now being processed.</p>
+          <div style="background:#f1f5f9;border-radius:10px;padding:16px 20px;margin:0 0 20px">
+            <p style="margin:0 0 6px;font-size:13px;color:#64748b">Certificate Details</p>
+            <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#1e293b">${certOrder.courseName}</p>
+            <p style="margin:0;font-size:13px;color:#64748b">${certOrder.certificateType.charAt(0).toUpperCase() + certOrder.certificateType.slice(1)} Certificate · ₹${certOrder.amount}</p>
+          </div>
+          <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;margin:0 0 20px">
+            <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#1d4ed8">Certificate Number</p>
+            <p style="margin:0;font-size:16px;font-weight:700;color:#1e40af;letter-spacing:1px">${certNumber}</p>
+          </div>
+          <p ...>${
+            pdfBytes
+              ? "Your certificate is attached to this email. Download and save it for your records."
+              : "Your certificate will be sent to this email within <strong>1–2 business days</strong>."
+          }</p>
+        </td></tr>
+        <tr><td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0">
+          <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">© ${new Date().getFullYear()} Tech Vidya. All rights reserved.</p>
+        </td></tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`,
+      attachments: [{
+        filename:    `${safeName}_${certLabel.replace(/\s+/g, "_")}.pdf`,
+        content:     Buffer.from(pdfBytes),
+        contentType: "application/pdf",
+      }],
+    });
+  } catch (err) {
+    console.error("Email delivery failed:", err.message);
+  }
+
+  // Log to sheet
+  logCertificateOrder({ ...certOrder.toObject(), razorpayPaymentId: "ADMIN-ISSUED", razorpayOrderId: "ADMIN-ISSUED" });
+
+  res.status(201).json({ success: true, certificateNumber: certNumber });
+});
