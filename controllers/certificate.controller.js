@@ -3,10 +3,14 @@ import crypto from "crypto";
 import CertificateOrder from "../models/CertificateOrder.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { sendEmail } from "../utils/email.utils.js";
+import { fillCertificate } from "../utils/fillCertificate.js";
 
 const getRazorpay = () => {
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
-    throw new AppError("Payment gateway not configured. Please contact support.", 503);
+    throw new AppError(
+      "Payment gateway not configured. Please contact support.",
+      503,
+    );
   }
   return new Razorpay({
     key_id: process.env.RAZORPAY_KEY_ID,
@@ -36,11 +40,24 @@ export const getRazorpayKey = asyncHandler(async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 export const createCertificateOrder = asyncHandler(async (req, res, next) => {
   const {
-    name, email, phone,
-    courseName, courseType, completionDate, certificateType,
+    name,
+    email,
+    phone,
+    courseName,
+    courseType,
+    completionDate,
+    certificateType,
   } = req.body;
 
-  if (!name || !email || !phone || !courseName || !courseType || !completionDate || !certificateType) {
+  if (
+    !name ||
+    !email ||
+    !phone ||
+    !courseName ||
+    !courseType ||
+    !completionDate ||
+    !certificateType
+  ) {
     return next(new AppError("All required fields must be provided.", 400));
   }
 
@@ -56,8 +73,13 @@ export const createCertificateOrder = asyncHandler(async (req, res, next) => {
 
   // Save pending order
   const certOrder = await CertificateOrder.create({
-    name, email, phone,
-    courseName, courseType, completionDate, certificateType,
+    name,
+    email,
+    phone,
+    courseName,
+    courseType,
+    completionDate,
+    certificateType,
     amount,
     razorpayOrderId: razorpayOrder.id,
     paymentStatus: "pending",
@@ -79,9 +101,19 @@ export const createCertificateOrder = asyncHandler(async (req, res, next) => {
 // @access Public
 // ─────────────────────────────────────────────────────────────────────────────
 export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
-  const { razorpay_order_id, razorpay_payment_id, razorpay_signature, certOrderId } = req.body;
+  const {
+    razorpay_order_id,
+    razorpay_payment_id,
+    razorpay_signature,
+    certOrderId,
+  } = req.body;
 
-  if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !certOrderId) {
+  if (
+    !razorpay_order_id ||
+    !razorpay_payment_id ||
+    !razorpay_signature ||
+    !certOrderId
+  ) {
     return next(new AppError("Invalid payment verification data.", 400));
   }
 
@@ -93,8 +125,12 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
     .digest("hex");
 
   if (expectedSig !== razorpay_signature) {
-    await CertificateOrder.findByIdAndUpdate(certOrderId, { paymentStatus: "failed" });
-    return next(new AppError("Payment verification failed. Invalid signature.", 400));
+    await CertificateOrder.findByIdAndUpdate(certOrderId, {
+      paymentStatus: "failed",
+    });
+    return next(
+      new AppError("Payment verification failed. Invalid signature.", 400),
+    );
   }
 
   // Generate certificate number
@@ -110,10 +146,29 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
       certificateStatus: "processing",
       certificateNumber: certNumber,
     },
-    { new: true }
+    { new: true },
   );
 
-  if (!certOrder) return next(new AppError("Certificate order not found.", 404));
+  if (!certOrder)
+    return next(new AppError("Certificate order not found.", 404));
+
+  let pdfBytes = null;
+  try {
+    const fakeEnrollment = {
+      course: { title: certOrder.courseName },
+      createdAt: new Date(certOrder.completionDate),
+      certificateIssuedAt: new Date(certOrder.completionDate),
+      _id: certOrder._id,
+    };
+    pdfBytes = await fillCertificate(fakeEnrollment, { name: certOrder.name });
+
+    await CertificateOrder.findByIdAndUpdate(certOrderId, {
+      certificateStatus: "issued",
+    });
+  } catch (err) {
+    console.error("PDF generation failed:", err.message);
+    // Continue — payment is confirmed, emails still go out
+  }
 
   // Notify admin
   try {
@@ -158,10 +213,20 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
 </html>`,
     });
 
+    const safeName = certOrder.name.replace(/\s+/g, "_");
+    const certLabel =
+      {
+        completion: "Certificate_of_Completion",
+        excellence: "Certificate_of_Excellence",
+        participation: "Certificate_of_Participation",
+      }[certOrder.certificateType] || "Certificate";
+
     // Confirmation to student
     await sendEmail({
       to: certOrder.email,
-      subject: `🎓 Payment Confirmed — Your Certificate is Being Processed`,
+      subject: pdfBytes
+        ? `🎓 Your Certificate is Ready — ${certOrder.courseName}`
+        : `🎓 Payment Confirmed — Your Certificate is Being Processed`,
       html: `
 <!DOCTYPE html>
 <html>
@@ -170,7 +235,7 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
     <tr><td align="center">
       <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
         <tr><td style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:28px 32px">
-          <p style="margin:0;font-size:22px;font-weight:700;color:#fff">Tech Vidya</p>
+          <p style="margin:0;font-size:22px;font-weight:700;color:#fff">Tech Mind Academy</p>
         </td></tr>
         <tr><td style="padding:32px">
           <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e293b">Payment Successful! 🎉</h1>
@@ -184,7 +249,11 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
             <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#1d4ed8">Certificate Number</p>
             <p style="margin:0;font-size:16px;font-weight:700;color:#1e40af;letter-spacing:1px">${certNumber}</p>
           </div>
-          <p style="margin:0;font-size:14px;color:#475569;line-height:1.6">You will receive your certificate via email within <strong>1-2 business days</strong>. Keep your certificate number for reference.</p>
+          <p ...>${
+            pdfBytes
+              ? "Your certificate is attached to this email. Download and save it for your records."
+              : "Your certificate will be sent to this email within <strong>1–2 business days</strong>."
+          }</p>
         </td></tr>
         <tr><td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0">
           <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">© ${new Date().getFullYear()} Tech Vidya. All rights reserved.</p>
@@ -194,7 +263,17 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
   </table>
 </body>
 </html>`,
+      attachments: pdfBytes
+        ? [
+            {
+              filename: `${safeName}_${certLabel}.pdf`,
+              content: Buffer.from(pdfBytes),
+              contentType: "application/pdf",
+            },
+          ]
+        : [],
     });
+    // });
   } catch (err) {
     console.error("Email error after payment:", err.message);
   }
@@ -222,7 +301,7 @@ export const updateCertificateStatus = asyncHandler(async (req, res, next) => {
   const order = await CertificateOrder.findByIdAndUpdate(
     req.params.id,
     { certificateStatus, ...(certificateUrl && { certificateUrl }) },
-    { new: true }
+    { new: true },
   );
   if (!order) return next(new AppError("Order not found.", 404));
   res.json({ success: true, order });
