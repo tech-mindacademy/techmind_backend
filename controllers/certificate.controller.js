@@ -45,6 +45,7 @@ export const createCertificateOrder = asyncHandler(async (req, res, next) => {
     phone,
     courseName,
     courseType,
+    startDate,
     completionDate,
     certificateType,
   } = req.body;
@@ -55,6 +56,7 @@ export const createCertificateOrder = asyncHandler(async (req, res, next) => {
     !phone ||
     !courseName ||
     !courseType ||
+    !startDate ||
     !completionDate ||
     !certificateType
   ) {
@@ -331,7 +333,7 @@ export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
   try {
     const fakeEnrollment = {
       course:              { title: certOrder.courseName },
-      createdAt:           new Date(certOrder.completionDate),
+      createdAt:           new Date(certOrder.startDate),
       certificateIssuedAt: new Date(certOrder.completionDate),
       _id:                 certOrder._id,
     };
