@@ -396,7 +396,7 @@ export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
   }
 
   // Log to sheet
-  logCertificateOrder({ ...certOrder.toObject(), razorpayPaymentId: "ADMIN-ISSUED", razorpayOrderId: "ADMIN-ISSUED" });
+  // logCertificateOrder({ ...certOrder.toObject(), razorpayPaymentId: "ADMIN-ISSUED", razorpayOrderId: "ADMIN-ISSUED" });
 
   res.status(201).json({ success: true, certificateNumber: certNumber });
 });
