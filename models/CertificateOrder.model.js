@@ -13,6 +13,7 @@ const certificateOrderSchema = new mongoose.Schema(
       enum: ["web-development", "data-science", "machine-learning", "digital-marketing", "ui-ux", "cybersecurity", "cloud-computing", "mobile-development", "other"],
       required: true,
     },
+    startDate: { type: String, required: true },
     completionDate: { type: String, required: true },
     certificateType: {
       type: String,

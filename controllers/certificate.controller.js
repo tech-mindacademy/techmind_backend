@@ -78,6 +78,7 @@ export const createCertificateOrder = asyncHandler(async (req, res, next) => {
     phone,
     courseName,
     courseType,
+    startDate,
     completionDate,
     certificateType,
     amount,
@@ -156,7 +157,7 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
   try {
     const fakeEnrollment = {
       course: { title: certOrder.courseName },
-      createdAt: new Date(certOrder.completionDate),
+      createdAt:new Date(certOrder.startDate),
       certificateIssuedAt: new Date(certOrder.completionDate),
       _id: certOrder._id,
     };
@@ -308,17 +309,17 @@ export const updateCertificateStatus = asyncHandler(async (req, res, next) => {
 });
 // POST /api/certificates/admin/issue
 export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
-  const { name, email, phone, courseName, courseType, completionDate, certificateType } = req.body;
+  const { name, email, phone, courseName, courseType, startDate, completionDate, certificateType } = req.body;
 
-  if (!name || !email || !phone || !courseName || !courseType || !completionDate || !certificateType) {
-    return next(new AppError("All fields are required.", 400));
+  if (!name || !email || !phone || !courseName || !courseType || !startDate || !completionDate || !certificateType) {
+  return next(new AppError("All fields are required.", 400));
   }
 
   const certNumber = `TV-CERT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
   // Save to DB (amount 0 — admin issued)
   const certOrder = await CertificateOrder.create({
-    name, email, phone, courseName, courseType, completionDate, certificateType,
+    name, email, phone, courseName, courseType, startDate, completionDate, certificateType,
     amount: 0,
     paymentStatus: "paid",
     certificateStatus: "processing",
