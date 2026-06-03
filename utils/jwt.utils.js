@@ -10,7 +10,7 @@ export const generateAccessToken = (userId, role) => {
 // ─── Generate long-lived refresh token (7d) ───────────────────────────────────
 export const generateRefreshToken = (userId, role) => {
   return jwt.sign({ id: userId, role }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRE || "7d",
+    expiresIn: process.env.JWT_REFRESH_EXPIRE || "1d",
   });
 };
 
@@ -24,7 +24,7 @@ export const sendTokens = (res, user, statusCode, message) => {
   httpOnly: true,
   secure: true,
   sameSite: "none",
-  maxAge: 7 * 24 * 60 * 60 * 1000,
+  maxAge: 1 * 24 * 60 * 60 * 1000,
 });
 
   // Strip sensitive fields from response
