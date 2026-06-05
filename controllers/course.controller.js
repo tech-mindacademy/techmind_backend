@@ -406,38 +406,6 @@ export const togglePublish = asyncHandler(async (req, res, next) => {
   });
 });
 
-// @route  POST /api/courses/:courseId/preview-video
-// @access Creator
-// export const uploadPreviewVideo = asyncHandler(async (req, res, next) => {
-//     console.log("FILE DATA:", req.file);
-//   const course = await Course.findById(req.params.courseId);
-//   if (!course) return next(new AppError("Course not found.", 404));
-
-//   if (course.creator.toString() !== req.user._id.toString()) {
-//     return next(new AppError("Not authorised.", 403));
-//   }
-//   if (!req.file) return next(new AppError("No video file uploaded.", 400));
-
-//   // Delete old preview
-//   if (course.previewVideo.public_id) {
-//     await cloudinary.uploader.destroy(course.previewVideo.public_id, {
-//       resource_type: "video",
-//     });
-//   }
-
-//   course.previewVideo = {
-//   public_id: req.file.filename,
-//   url: req.file.path,
-//   duration: req.file.duration || 0,
-// };
-//   await course.save();
-
-//   res.status(200).json({
-//     success: true,
-//     message: "Preview video uploaded.",
-//     previewVideo: course.previewVideo,
-//   });
-// });
 export const uploadPreviewVideo = asyncHandler(async (req, res, next) => {
 
    console.log(JSON.stringify(req.file, null, 2));
