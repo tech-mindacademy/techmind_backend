@@ -10,19 +10,24 @@ const appendToSheet = async (name, email, message) => {
   }
 
   try {
-    await fetch(SHEET_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type: "contact",
-        "Submitted At": new Date().toLocaleString("en-IN"),
-        "Name": name,
-        "Email": email,
-        "Message": message,
-      }),
+    const payload = JSON.stringify({
+      type: "contact",
+      "Submitted At": new Date().toLocaleString("en-IN"),
+      "Name": name,
+      "Email": email,
+      "Message": message,
     });
+
+    const response = await fetch(SHEET_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" }, // ← changed from application/json
+      body: payload,
+      redirect: "follow",                         // ← added
+    });
+
+    const text = await response.text();
+    console.log("Sheet response:", text); // ← will show success/error from Apps Script
   } catch (err) {
-    // Never block the response if sheet fails
     console.error("Google Sheet append failed:", err.message);
   }
 };
