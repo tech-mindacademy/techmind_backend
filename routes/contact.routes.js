@@ -4,4 +4,4 @@ const { sendContactMessage } = require("../controllers/contact.controller.js");
 
 router.post("/", sendContactMessage);
 
-module.exports = router;
+export default router;
