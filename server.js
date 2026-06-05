@@ -25,6 +25,7 @@ import heroImageRoutes from "./routes/HeroSlide.routes.js";
 import reviewRoutes from "./routes/Review.routes.js";
 import statsRoutes from "./routes/stats.routes.js";
 import refundRoutes from "./routes/refund.routes.js";
+import contactRoutes from "./routes/contact.routes.js";
 
 connectDB();
 
@@ -82,6 +83,7 @@ app.use("/api/hero-images", heroImageRoutes);
 app.use("/api/reviews", reviewRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/refunds", refundRoutes);
+app.use("/api/contact", contactRoutes);
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,

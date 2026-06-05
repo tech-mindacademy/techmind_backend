@@ -194,3 +194,40 @@ export const creatorSubmissionTemplate = (creatorName, studentName, assignmentTi
   </div>
   ${btn("Review Submission", submissionsUrl)}
 `);
+// ─── Contact form template ────────────────────────────────────────────────────
+export const contactFormTemplate = (name, email, message) => wrap(`
+  ${h1("📬 New Contact Form Message")}
+  <div style="background:#f1f5f9;border-radius:10px;padding:16px 20px;margin:0 0 20px">
+    <table style="width:100%;font-size:14px;border-collapse:collapse">
+      <tr>
+        <td style="padding:6px 0;color:#64748b;font-weight:600;width:80px">Name</td>
+        <td style="padding:6px 0;color:#1e293b">${name}</td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;color:#64748b;font-weight:600">Email</td>
+        <td style="padding:6px 0">
+          <a href="mailto:${email}" style="color:#4f46e5;text-decoration:none">${email}</a>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:6px 0;color:#64748b;font-weight:600;vertical-align:top">Message</td>
+        <td style="padding:6px 0;color:#1e293b"> </td>
+      </tr>
+    </table>
+    <div style="background:#fff;border-left:4px solid #4f46e5;padding:12px 16px;border-radius:6px;color:#1e293b;font-size:14px;line-height:1.6;margin-top:4px">
+      ${message.replace(/\n/g, "<br/>")}
+    </div>
+  </div>
+  ${small(`Received on ${new Date().toLocaleString("en-IN")} · Reply directly to <a href="mailto:${email}" style="color:#94a3b8">${email}</a>`)}
+`);
+
+// ─── Contact form user confirmation ──────────────────────────────────────────
+export const contactConfirmationTemplate = (name, message) => wrap(`
+  ${h1(`Thanks for reaching out, ${name}! 👋`)}
+  ${p("We've received your message and will get back to you within <strong>24 hours</strong>.")}
+  <div style="background:#f1f5f9;border-left:4px solid #4f46e5;padding:12px 16px;border-radius:6px;margin:0 0 20px">
+    <p style="margin:0 0 6px;font-size:12px;color:#64748b;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Your message</p>
+    <p style="margin:0;font-size:14px;color:#1e293b;line-height:1.6">${message.replace(/\n/g, "<br/>")}</p>
+  </div>
+  ${small("If you have anything to add, just reply to this email.")}
+`);
