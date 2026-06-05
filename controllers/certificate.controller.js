@@ -18,15 +18,22 @@ const getRazorpay = () => {
   });
 };
 
-// Certificate pricing (in INR)
 const CERTIFICATE_PRICES = {
   completion: 299,
   excellence: 499,
   participation: 199,
 };
 
+const logToSheet = (payload) => {
+  fetch(process.env.GOOGLE_SHEET_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).catch((err) => console.error("Sheet log failed:", err.message));
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
-// GET RAZORPAY KEY (public)
+// GET RAZORPAY KEY
 // @route  GET /api/certificates/key
 // ─────────────────────────────────────────────────────────────────────────────
 export const getRazorpayKey = asyncHandler(async (req, res) => {
@@ -67,13 +74,12 @@ export const createCertificateOrder = asyncHandler(async (req, res, next) => {
 
   const razorpay = getRazorpay();
   const razorpayOrder = await razorpay.orders.create({
-    amount: amount * 100, // paise
+    amount: amount * 100,
     currency: "INR",
     receipt: `cert_${Date.now()}`,
     notes: { name, email, courseName, certificateType },
   });
 
-  // Save pending order
   const certOrder = await CertificateOrder.create({
     name,
     email,
@@ -136,10 +142,8 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
     );
   }
 
-  // Generate certificate number
   const certNumber = `TV-CERT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
-  // Update order
   const certOrder = await CertificateOrder.findByIdAndUpdate(
     certOrderId,
     {
@@ -152,28 +156,44 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
     { new: true },
   );
 
-  if (!certOrder)
-    return next(new AppError("Certificate order not found.", 404));
+  if (!certOrder) return next(new AppError("Certificate order not found.", 404));
 
   let pdfBytes = null;
   try {
     const fakeEnrollment = {
       course: { title: certOrder.courseName },
-      createdAt:new Date(certOrder.startDate),
+      createdAt: new Date(certOrder.startDate),
       certificateIssuedAt: new Date(certOrder.completionDate),
       _id: certOrder._id,
     };
     pdfBytes = await fillCertificate(fakeEnrollment, { name: certOrder.name });
-
     await CertificateOrder.findByIdAndUpdate(certOrderId, {
       certificateStatus: "issued",
     });
   } catch (err) {
     console.error("PDF generation failed:", err.message);
-    // Continue — payment is confirmed, emails still go out
   }
 
-  // Notify admin
+  // ── Log to Sheet3 (paid purchases) ──
+  logToSheet({
+    type:                  "certificate",
+    "Submitted At":        new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+    "Certificate Number":  certNumber,
+    "Name":                certOrder.name,
+    "Email":               certOrder.email,
+    "Phone":               certOrder.phone,
+    "Course Name":         certOrder.courseName,
+    "Course Type":         certOrder.courseType,
+    "Start Date":          certOrder.startDate,
+    "Completion Date":     certOrder.completionDate,
+    "Certificate Type":    certOrder.certificateType,
+    "Amount":              certOrder.amount,
+    "Payment Status":      "paid",
+    "Razorpay Order ID":   razorpay_order_id,
+    "Razorpay Payment ID": razorpay_payment_id,
+  });
+
+  // ── Notify admin ──
   try {
     await sendEmail({
       to: process.env.SMTP_USER,
@@ -217,14 +237,12 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
     });
 
     const safeName = certOrder.name.replace(/\s+/g, "_");
-    const certLabel =
-      {
-        completion: "Certificate_of_Completion",
-        excellence: "Certificate_of_Excellence",
-        participation: "Certificate_of_Participation",
-      }[certOrder.certificateType] || "Certificate";
+    const certLabel = {
+      completion:    "Certificate_of_Completion",
+      excellence:    "Certificate_of_Excellence",
+      participation: "Certificate_of_Participation",
+    }[certOrder.certificateType] || "Certificate";
 
-    // Confirmation to student
     await sendEmail({
       to: certOrder.email,
       subject: pdfBytes
@@ -252,7 +270,7 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
             <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#1d4ed8">Certificate Number</p>
             <p style="margin:0;font-size:16px;font-weight:700;color:#1e40af;letter-spacing:1px">${certNumber}</p>
           </div>
-          <p ...>${
+          <p style="margin:0;font-size:14px;color:#475569">${
             pdfBytes
               ? "Your certificate is attached to this email. Download and save it for your records."
               : "Your certificate will be sent to this email within <strong>1–2 business days</strong>."
@@ -276,7 +294,6 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
           ]
         : [],
     });
-    // });
   } catch (err) {
     console.error("Email error after payment:", err.message);
   }
@@ -309,26 +326,53 @@ export const updateCertificateStatus = asyncHandler(async (req, res, next) => {
   if (!order) return next(new AppError("Order not found.", 404));
   res.json({ success: true, order });
 });
-// POST /api/certificates/admin/issue
-export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
-  const { name, email, phone, courseName, courseType, startDate, completionDate, certificateType } = req.body;
 
-  if (!name || !email || !phone || !courseName || !courseType || !startDate || !completionDate || !certificateType) {
-  return next(new AppError("All fields are required.", 400));
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN — Issue certificate (free / manual)
+// @route  POST /api/certificates/admin/issue
+// ─────────────────────────────────────────────────────────────────────────────
+export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
+  const {
+    name,
+    email,
+    phone,
+    courseName,
+    courseType,
+    startDate,
+    completionDate,
+    certificateType,
+  } = req.body;
+
+  if (
+    !name ||
+    !email ||
+    !phone ||
+    !courseName ||
+    !courseType ||
+    !startDate ||
+    !completionDate ||
+    !certificateType
+  ) {
+    return next(new AppError("All fields are required.", 400));
   }
 
   const certNumber = `TV-CERT-${Date.now()}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`;
 
-  // Save to DB (amount 0 — admin issued)
   const certOrder = await CertificateOrder.create({
-    name, email, phone, courseName, courseType, startDate, completionDate, certificateType,
+    name,
+    email,
+    phone,
+    courseName,
+    courseType,
+    startDate,
+    completionDate,
+    certificateType,
     amount: 0,
     paymentStatus: "paid",
     certificateStatus: "processing",
     certificateNumber: certNumber,
   });
 
-  // Fill PDF
   let pdfBytes;
   try {
     const fakeEnrollment = {
@@ -338,15 +382,35 @@ export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
       _id:                 certOrder._id,
     };
     pdfBytes = await fillCertificate(fakeEnrollment, { name: certOrder.name });
-    await CertificateOrder.findByIdAndUpdate(certOrder._id, { certificateStatus: "issued" });
+    await CertificateOrder.findByIdAndUpdate(certOrder._id, {
+      certificateStatus: "issued",
+    });
   } catch (err) {
     console.error("PDF generation failed:", err.message);
     return next(new AppError("Certificate generation failed.", 500));
   }
 
-  // Send email
-  const certLabel = { completion: "Certificate of Completion", excellence: "Certificate of Excellence", participation: "Certificate of Participation" }[certificateType];
-  const safeName  = name.replace(/\s+/g, "_");
+  // ── Log to Sheet4 (admin-issued / free) ──
+  logToSheet({
+    type:                 "admin_certificate",
+    "Issued At":          new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+    "Certificate Number": certNumber,
+    "Name":               certOrder.name,
+    "Email":              certOrder.email,
+    "Phone":              certOrder.phone,
+    "Course Name":        certOrder.courseName,
+    "Course Type":        certOrder.courseType,
+    "Start Date":         certOrder.startDate,
+    "Completion Date":    certOrder.completionDate,
+    "Certificate Type":   certOrder.certificateType,
+  });
+
+  const certLabel = {
+    completion:    "Certificate of Completion",
+    excellence:    "Certificate of Excellence",
+    participation: "Certificate of Participation",
+  }[certificateType] || "Certificate";
+  const safeName = name.replace(/\s+/g, "_");
 
   try {
     await sendEmail({
@@ -363,22 +427,18 @@ export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
           <p style="margin:0;font-size:22px;font-weight:700;color:#fff">Tech Mind Academy</p>
         </td></tr>
         <tr><td style="padding:32px">
-          <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e293b">Payment Successful! 🎉</h1>
-          <p style="margin:0 0 20px;font-size:15px;color:#475569;line-height:1.6">Hi ${certOrder.name}, your payment of <strong>₹${certOrder.amount}</strong> has been received and your certificate is now being processed.</p>
+          <h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e293b">Congratulations, ${certOrder.name}! 🎉</h1>
+          <p style="margin:0 0 20px;font-size:15px;color:#475569;line-height:1.6">Your certificate for <strong>${certOrder.courseName}</strong> has been issued and is attached to this email.</p>
           <div style="background:#f1f5f9;border-radius:10px;padding:16px 20px;margin:0 0 20px">
             <p style="margin:0 0 6px;font-size:13px;color:#64748b">Certificate Details</p>
             <p style="margin:0 0 4px;font-size:15px;font-weight:600;color:#1e293b">${certOrder.courseName}</p>
-            <p style="margin:0;font-size:13px;color:#64748b">${certOrder.certificateType.charAt(0).toUpperCase() + certOrder.certificateType.slice(1)} Certificate · ₹${certOrder.amount}</p>
+            <p style="margin:0;font-size:13px;color:#64748b">${certLabel}</p>
           </div>
           <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:14px 18px;margin:0 0 20px">
             <p style="margin:0 0 4px;font-size:13px;font-weight:600;color:#1d4ed8">Certificate Number</p>
             <p style="margin:0;font-size:16px;font-weight:700;color:#1e40af;letter-spacing:1px">${certNumber}</p>
           </div>
-          <p ...>${
-            pdfBytes
-              ? "Your certificate is attached to this email. Download and save it for your records."
-              : "Your certificate will be sent to this email within <strong>1–2 business days</strong>."
-          }</p>
+          <p style="margin:0;font-size:14px;color:#475569">Your certificate is attached to this email. Download and save it for your records.</p>
         </td></tr>
         <tr><td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0">
           <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">© ${new Date().getFullYear()} Tech Vidya. All rights reserved.</p>
@@ -397,9 +457,6 @@ export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
   } catch (err) {
     console.error("Email delivery failed:", err.message);
   }
-
-  // Log to sheet
-  // logCertificateOrder({ ...certOrder.toObject(), razorpayPaymentId: "ADMIN-ISSUED", razorpayOrderId: "ADMIN-ISSUED" });
 
   res.status(201).json({ success: true, certificateNumber: certNumber });
 });
