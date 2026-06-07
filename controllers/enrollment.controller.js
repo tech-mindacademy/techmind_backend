@@ -326,3 +326,20 @@ export const getMyCertificates = asyncHandler(async (req, res) => {
 
   res.status(200).json({ success: true, enrollments });
 });
+// @route  GET /api/enrollments/:courseId/admin-preview
+// @access Admin only
+export const getAdminCoursePreview = asyncHandler(async (req, res, next) => {
+  const course = await Course.findById(req.params.courseId).select("sections");
+  if (!course) return next(new AppError("Course not found.", 404));
+
+  // Return a fake enrollment shape so the player works without changes
+  res.status(200).json({
+    success: true,
+    enrollment: {
+      completedLessons: [],
+      lastAccessedLesson: null,
+      progressPercent: 0,
+      isCompleted: false,
+    },
+  });
+});

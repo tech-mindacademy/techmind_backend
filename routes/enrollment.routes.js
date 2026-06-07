@@ -36,6 +36,13 @@ router.get(
 router.get("/:courseId/certificate", protect, authorizeRoles("student"), requireVerified, downloadCertificate);
 
 router.get(
+  "/:courseId/admin-preview",
+  protect,
+  authorizeRoles("admin"),
+  getAdminCoursePreview   // new controller below
+);
+
+router.get(
   "/:courseId",
   protect,
   authorizeRoles("student"),
