@@ -3,7 +3,10 @@ import QuizAttempt from "../models/QuizAttempt.model.js";
 import Course from "../models/Course.model.js";
 import Enrollment from "../models/Enrollment.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
-import { notifyQuizPassed, notifyCourseCompleted } from "../utils/notifications.utils.js";
+import {
+  notifyQuizPassed,
+  notifyCourseCompleted,
+} from "../utils/notifications.utils.js";
 
 // ─── Helper: detect if a lesson belongs to a Final Quiz / Assessment section ──
 const FINAL_SECTION_PATTERN = /final\s*(quiz|assessment|exam|test)/i;
@@ -12,7 +15,7 @@ const isFinalQuizLesson = (course, lessonId) => {
   return course.sections.some(
     (sec) =>
       FINAL_SECTION_PATTERN.test(sec.title) &&
-      sec.lessons.some((l) => l._id.toString() === lessonId.toString())
+      sec.lessons.some((l) => l._id.toString() === lessonId.toString()),
   );
 };
 
@@ -34,9 +37,15 @@ const verifyCreatorOwnership = async (courseId, userId, role) => {
 // @access Creator
 export const createQuiz = asyncHandler(async (req, res, next) => {
   const {
-    courseId, lessonId, title,
-    questions, timeLimit, passMark,
-    maxAttempts, shuffleQuestions, showAnswersAfter,
+    courseId,
+    lessonId,
+    title,
+    questions,
+    timeLimit,
+    passMark,
+    maxAttempts,
+    shuffleQuestions,
+    showAnswersAfter,
   } = req.body;
 
   await verifyCreatorOwnership(courseId, req.user._id, req.user.role);
@@ -51,11 +60,24 @@ export const createQuiz = asyncHandler(async (req, res, next) => {
     if (q.questionType === "mcq" || q.questionType === "true_false") {
       const hasCorrect = q.options?.some((o) => o.isCorrect);
       if (!hasCorrect) {
-        return next(new AppError(`Question "${q.questionText}" must have at least one correct option.`, 400));
+        return next(
+          new AppError(
+            `Question "${q.questionText}" must have at least one correct option.`,
+            400,
+          ),
+        );
       }
     }
-    if (q.questionType === "short_answer" && (!q.correctAnswers || q.correctAnswers.length === 0)) {
-      return next(new AppError(`Short answer question "${q.questionText}" must have at least one accepted answer.`, 400));
+    if (
+      q.questionType === "short_answer" &&
+      (!q.correctAnswers || q.correctAnswers.length === 0)
+    ) {
+      return next(
+        new AppError(
+          `Short answer question "${q.questionText}" must have at least one accepted answer.`,
+          400,
+        ),
+      );
     }
   }
 
@@ -74,7 +96,7 @@ export const createQuiz = asyncHandler(async (req, res, next) => {
   await Course.findOneAndUpdate(
     { _id: courseId, "sections.lessons._id": lessonId },
     { $set: { "sections.$[].lessons.$[lesson].quiz": quiz._id } },
-    { arrayFilters: [{ "lesson._id": lessonId }] }
+    { arrayFilters: [{ "lesson._id": lessonId }] },
   );
 
   res.status(201).json({ success: true, message: "Quiz created.", quiz });
@@ -87,7 +109,8 @@ export const getQuiz = asyncHandler(async (req, res, next) => {
   if (!quiz) return next(new AppError("Quiz not found.", 404));
 
   const isCreator =
-    quiz.creator.toString() === req.user._id.toString() || req.user.role === "admin";
+    quiz.creator.toString() === req.user._id.toString() ||
+    req.user.role === "admin";
 
   if (isCreator) {
     return res.status(200).json({ success: true, quiz });
@@ -109,12 +132,24 @@ export const getQuiz = asyncHandler(async (req, res, next) => {
 export const updateQuiz = asyncHandler(async (req, res, next) => {
   const quiz = await Quiz.findById(req.params.quizId);
   if (!quiz) return next(new AppError("Quiz not found.", 404));
-  if (quiz.creator.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+  if (
+    quiz.creator.toString() !== req.user._id.toString() &&
+    req.user.role !== "admin"
+  ) {
     return next(new AppError("Not authorised.", 403));
   }
 
-  const updatable = ["title", "timeLimit", "passMark", "maxAttempts", "shuffleQuestions", "showAnswersAfter"];
-  updatable.forEach((f) => { if (req.body[f] !== undefined) quiz[f] = req.body[f]; });
+  const updatable = [
+    "title",
+    "timeLimit",
+    "passMark",
+    "maxAttempts",
+    "shuffleQuestions",
+    "showAnswersAfter",
+  ];
+  updatable.forEach((f) => {
+    if (req.body[f] !== undefined) quiz[f] = req.body[f];
+  });
 
   if (req.body.questions) {
     quiz.questions = req.body.questions.map((q, i) => ({ ...q, order: i }));
@@ -129,14 +164,17 @@ export const updateQuiz = asyncHandler(async (req, res, next) => {
 export const deleteQuiz = asyncHandler(async (req, res, next) => {
   const quiz = await Quiz.findById(req.params.quizId);
   if (!quiz) return next(new AppError("Quiz not found.", 404));
-  if (quiz.creator.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+  if (
+    quiz.creator.toString() !== req.user._id.toString() &&
+    req.user.role !== "admin"
+  ) {
     return next(new AppError("Not authorised.", 403));
   }
 
   await Course.findOneAndUpdate(
     { _id: quiz.lesson.courseId },
     { $set: { "sections.$[].lessons.$[lesson].quiz": null } },
-    { arrayFilters: [{ "lesson._id": quiz.lesson.lessonId }] }
+    { arrayFilters: [{ "lesson._id": quiz.lesson.lessonId }] },
   );
 
   await QuizAttempt.deleteMany({ quiz: quiz._id });
@@ -158,7 +196,10 @@ export const getQuizByLesson = asyncHandler(async (req, res, next) => {
 export const getQuizAttempts = asyncHandler(async (req, res, next) => {
   const quiz = await Quiz.findById(req.params.quizId);
   if (!quiz) return next(new AppError("Quiz not found.", 404));
-  if (quiz.creator.toString() !== req.user._id.toString() && req.user.role !== "admin") {
+  if (
+    quiz.creator.toString() !== req.user._id.toString() &&
+    req.user.role !== "admin"
+  ) {
     return next(new AppError("Not authorised.", 403));
   }
 
@@ -183,7 +224,8 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
     student: req.user._id,
     course: quiz.lesson.courseId,
   });
-  if (!enrollment) return next(new AppError("You are not enrolled in this course.", 403));
+  if (!enrollment)
+    return next(new AppError("You are not enrolled in this course.", 403));
 
   if (quiz.maxAttempts > 0) {
     const attemptCount = await QuizAttempt.countDocuments({
@@ -192,7 +234,9 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
       status: { $in: ["submitted", "graded"] },
     });
     if (attemptCount >= quiz.maxAttempts) {
-      return next(new AppError(`Maximum attempts (${quiz.maxAttempts}) reached.`, 400));
+      return next(
+        new AppError(`Maximum attempts (${quiz.maxAttempts}) reached.`, 400),
+      );
     }
   }
 
@@ -202,11 +246,16 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
     status: "in_progress",
   });
   if (existing) {
-    return res.status(200).json({ success: true, attempt: existing, resumed: true });
+    return res
+      .status(200)
+      .json({ success: true, attempt: existing, resumed: true });
   }
 
   const attemptNumber =
-    (await QuizAttempt.countDocuments({ quiz: quiz._id, student: req.user._id })) + 1;
+    (await QuizAttempt.countDocuments({
+      quiz: quiz._id,
+      student: req.user._id,
+    })) + 1;
 
   let questions = [...quiz.questions];
   if (quiz.shuffleQuestions) {
@@ -248,7 +297,7 @@ const gradeAttempt = (quiz, submittedAnswers) => {
     totalPoints += question.points;
 
     const submitted = submittedAnswers.find(
-      (a) => a.questionId.toString() === question._id.toString()
+      (a) => a.questionId.toString() === question._id.toString(),
     );
 
     if (!submitted) {
@@ -275,13 +324,15 @@ const gradeAttempt = (quiz, submittedAnswers) => {
         correctIds.length === selectedIds.length &&
         correctIds.every((id, i) => id === selectedIds[i]);
     } else if (question.questionType === "true_false") {
-      const correctId = question.options.find((o) => o.isCorrect)?._id?.toString();
+      const correctId = question.options
+        .find((o) => o.isCorrect)
+        ?._id?.toString();
       const selectedId = submitted.selectedOptions?.[0]?.toString();
       isCorrect = correctId === selectedId;
     } else if (question.questionType === "short_answer") {
       const normalised = submitted.textAnswer?.toLowerCase().trim();
       isCorrect = question.correctAnswers.some(
-        (ans) => ans.toLowerCase().trim() === normalised
+        (ans) => ans.toLowerCase().trim() === normalised,
       );
     }
 
@@ -297,7 +348,8 @@ const gradeAttempt = (quiz, submittedAnswers) => {
     };
   });
 
-  const scorePercent = totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 0;
+  const scorePercent =
+    totalPoints > 0 ? Math.round((earnedPoints / totalPoints) * 100) : 0;
   return { gradedAnswers, totalPoints, earnedPoints, scorePercent };
 };
 
@@ -319,7 +371,8 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
   if (!attempt) return next(new AppError("Active attempt not found.", 404));
 
   // Grade the attempt
-  const { gradedAnswers, totalPoints, earnedPoints, scorePercent } = gradeAttempt(quiz, answers || []);
+  const { gradedAnswers, totalPoints, earnedPoints, scorePercent } =
+    gradeAttempt(quiz, answers || []);
   const passed = scorePercent >= quiz.passMark;
 
   attempt.answers = gradedAnswers;
@@ -343,35 +396,59 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
 
     if (course) {
       // Fire quiz-passed notification (non-blocking)
-      notifyQuizPassed(req.user, quiz.title, course, scorePercent, quiz.passMark);
+      notifyQuizPassed(
+        req.user,
+        quiz.title,
+        course,
+        scorePercent,
+        quiz.passMark,
+      );
 
       // Check if this quiz's lesson sits inside a Final Quiz / Assessment section
       const isFinal = isFinalQuizLesson(course, quiz.lesson.lessonId);
 
+      // REPLACE the entire isFinal block:
       if (isFinal) {
         const enrollment = await Enrollment.findOne({
           student: req.user._id,
           course: course._id,
         });
 
-        // Only issue once — don't overwrite if already issued
-        if (enrollment && !enrollment.certificateIssued) {
-          enrollment.certificateIssued = true;
-          enrollment.certificateIssuedAt = new Date();
-
-          if (!enrollment.isCompleted) {
+        if (enrollment) {
+          if (!enrollment.certificateIssued) {
+            // Sync progress to 100% — they passed the final quiz so course is done
+            const allLessonIds = course.sections.flatMap((s) =>
+              s.lessons.map((l) => l._id),
+            );
+            const completedSet = new Set(
+              enrollment.completedLessons.map((cl) => cl.lesson.toString()),
+            );
+            // Add any lessons not yet marked (edge case: student skipped to final quiz)
+            for (const id of allLessonIds) {
+              if (!completedSet.has(id.toString())) {
+                enrollment.completedLessons.push({
+                  lesson: id,
+                  completedAt: new Date(),
+                });
+              }
+            }
+            enrollment.progressPercent = 100;
             enrollment.isCompleted = true;
             enrollment.completedAt = new Date();
+            enrollment.certificateIssued = true;
+            enrollment.certificateIssuedAt = new Date();
+
+            await enrollment.save();
+            certificateIssued = true;
+
+            notifyCourseCompleted(req.user, {
+              _id: course._id,
+              title: course.title,
+            });
+          } else {
+            // Certificate already issued on a previous passing attempt
+            certificateIssued = true;
           }
-
-          await enrollment.save();
-          certificateIssued = true;
-
-          // Fire course-completed notification (non-blocking)
-          notifyCourseCompleted(req.user, { _id: course._id, title: course.title });
-        } else if (enrollment?.certificateIssued) {
-          // Certificate was already issued from a previous passing attempt
-          certificateIssued = true;
         }
       }
     }
@@ -385,7 +462,7 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
   const resultQuestions = showAnswers
     ? quiz.questions.map((q) => {
         const gradedAnswer = gradedAnswers.find(
-          (a) => a.questionId.toString() === q._id.toString()
+          (a) => a.questionId.toString() === q._id.toString(),
         );
         return {
           _id: q._id,
@@ -422,7 +499,9 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
 // @route  GET /api/quizzes/:quizId/my-attempts
 // @access Student
 export const getMyAttempts = asyncHandler(async (req, res, next) => {
-  const quiz = await Quiz.findById(req.params.quizId).select("maxAttempts passMark title");
+  const quiz = await Quiz.findById(req.params.quizId).select(
+    "maxAttempts passMark title",
+  );
   if (!quiz) return next(new AppError("Quiz not found.", 404));
 
   const attempts = await QuizAttempt.find({
@@ -430,17 +509,26 @@ export const getMyAttempts = asyncHandler(async (req, res, next) => {
     student: req.user._id,
   }).sort({ createdAt: -1 });
 
-  const attemptsUsed = attempts.filter((a) => a.status !== "in_progress").length;
+  const attemptsUsed = attempts.filter(
+    (a) => a.status !== "in_progress",
+  ).length;
   const bestAttempt = attempts.reduce(
     (best, a) => (!best || a.scorePercent > best.scorePercent ? a : best),
-    null
+    null,
   );
 
   res.status(200).json({
     success: true,
-    quiz: { title: quiz.title, maxAttempts: quiz.maxAttempts, passMark: quiz.passMark },
+    quiz: {
+      title: quiz.title,
+      maxAttempts: quiz.maxAttempts,
+      passMark: quiz.passMark,
+    },
     attemptsUsed,
-    attemptsRemaining: quiz.maxAttempts === 0 ? "unlimited" : Math.max(0, quiz.maxAttempts - attemptsUsed),
+    attemptsRemaining:
+      quiz.maxAttempts === 0
+        ? "unlimited"
+        : Math.max(0, quiz.maxAttempts - attemptsUsed),
     bestScore: bestAttempt?.scorePercent ?? null,
     hasPassed: attempts.some((a) => a.passed),
     attempts,
