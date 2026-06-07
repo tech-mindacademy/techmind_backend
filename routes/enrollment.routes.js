@@ -5,6 +5,7 @@ import {
   markLessonComplete,
   updateLastAccessed,
   getCourseStudents,
+  getAdminCoursePreview
 } from "../controllers/enrollment.controller.js";
 import { downloadCertificate, getMyCertificates } from "../controllers/certiicate1.controller.js";
 
