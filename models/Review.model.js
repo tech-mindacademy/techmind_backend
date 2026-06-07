@@ -51,6 +51,11 @@ const reviewSchema = new mongoose.Schema(
       maxlength: [1000, "Review cannot exceed 1000 characters"],
     },
 
+    isApproved: {
+      type: Boolean,
+      default: false, // requires admin approval before showing publicly
+    },
+
     // Admin can hide inappropriate reviews
     isVisible: {
       type: Boolean,
@@ -63,7 +68,7 @@ const reviewSchema = new mongoose.Schema(
       default: false,
     },
   },
-  { timestamps: true }
+  { timestamps: true },
 );
 
 // One review per user per subject

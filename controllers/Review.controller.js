@@ -99,15 +99,14 @@ export const deleteReview = asyncHandler(async (req, res, next) => {
 // ─── @route  GET /api/reviews/featured ───────────────────────────────────────
 // @access Public — for the landing page (featured or latest visible reviews)
 export const getFeaturedReviews = asyncHandler(async (req, res) => {
-  // Try featured first; fall back to most recent visible
-  let reviews = await Review.find({ isVisible: true, isFeatured: true })
+  let reviews = await Review.find({ isVisible: true, isFeatured: true, isApproved: true })
     .populate("user", "name avatar")
     .populate("course", "title")
     .sort({ createdAt: -1 })
     .limit(12);
 
   if (reviews.length < 6) {
-    reviews = await Review.find({ isVisible: true })
+    reviews = await Review.find({ isVisible: true, isApproved: true })
       .populate("user", "name avatar")
       .populate("course", "title")
       .sort({ createdAt: -1 })
@@ -129,4 +128,33 @@ export const getCourseReviews = asyncHandler(async (req, res) => {
     .sort({ createdAt: -1 });
 
   res.status(200).json({ success: true, reviews });
+});
+// @route  GET /api/reviews/admin/pending
+// @access Admin
+export const getPendingReviews = asyncHandler(async (req, res) => {
+  const reviews = await Review.find({ isApproved: false, isVisible: true })
+    .populate("user", "name avatar email")
+    .populate("course", "title")
+    .sort({ createdAt: -1 });
+
+  res.status(200).json({ success: true, reviews });
+});
+
+// @route  PATCH /api/reviews/:id/approve
+// @access Admin
+export const approveReview = asyncHandler(async (req, res, next) => {
+  const review = await Review.findById(req.params.id);
+  if (!review) return next(new AppError("Review not found.", 404));
+
+  const { approved } = req.body; // true = approve, false = reject (hide)
+
+  review.isApproved = approved === true;
+  review.isVisible = approved !== false; // rejected reviews get hidden too
+  await review.save();
+
+  res.status(200).json({
+    success: true,
+    message: approved ? "Review approved." : "Review rejected.",
+    review,
+  });
 });

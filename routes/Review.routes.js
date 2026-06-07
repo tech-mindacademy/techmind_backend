@@ -9,6 +9,8 @@ import {
   deleteReview,
   getFeaturedReviews,
   getCourseReviews,
+  getPendingReviews,   // ← add
+  approveReview,       // ← add
 } from "../controllers/Review.controller.js";
 
 const router = express.Router();
@@ -63,5 +65,18 @@ router.get("/my", getMyReviews);
 router.post("/", reviewRules, validate, createReview);
 router.put("/:id", updateRules, validate, updateReview);
 router.delete("/:id", deleteReview);
+router.get(
+  "/admin/pending",
+  protect,
+  authorizeRoles("admin"),
+  getPendingReviews
+);
+
+router.patch(
+  "/:id/approve",
+  protect,
+  authorizeRoles("admin"),
+  approveReview
+);
 
 export default router;
