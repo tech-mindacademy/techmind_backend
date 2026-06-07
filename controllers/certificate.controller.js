@@ -4,7 +4,7 @@ import CertificateOrder from "../models/CertificateOrder.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { sendEmail } from "../utils/email.utils.js";
 import { fillCertificate } from "../utils/fillCertificate.js";
-mport https from "https";
+import https from "https";
 import http from "http";
 import { URL } from "url";
 
