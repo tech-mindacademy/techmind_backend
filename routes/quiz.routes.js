@@ -57,7 +57,7 @@ router.get("/:quizId", protect, getQuiz);
 router.post(
   "/:quizId/start",
   protect,
-  authorizeRoles("student"),
+  authorizeRoles("student", "admin"),
   requireVerified,
   startQuizAttempt
 );
@@ -65,7 +65,7 @@ router.post(
 router.post(
   "/:quizId/submit",
   protect,
-  authorizeRoles("student"),
+  authorizeRoles("student", "admin"),
   requireVerified,
   submitQuizAttempt
 );
@@ -73,7 +73,7 @@ router.post(
 router.get(
   "/:quizId/my-attempts",
   protect,
-  authorizeRoles("student"),
+  authorizeRoles("student", "admin"),
   getMyAttempts
 );
 

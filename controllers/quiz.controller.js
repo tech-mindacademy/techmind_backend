@@ -220,6 +220,28 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
   const quiz = await Quiz.findById(req.params.quizId);
   if (!quiz) return next(new AppError("Quiz not found.", 404));
 
+  // ── Admin preview: return full quiz with answers, no DB writes ──────────────
+  if (req.user.role === "admin") {
+    const questions = quiz.questions.map((q) => ({
+      _id: q._id,
+      questionText: q.questionText,
+      questionType: q.questionType,
+      options: q.options, // full options WITH isCorrect for admin
+      correctAnswers: q.correctAnswers,
+      explanation: q.explanation,
+      points: q.points,
+      order: q.order,
+    }));
+    return res.status(200).json({
+      success: true,
+      isAdminPreview: true,
+      attempt: { _id: "admin-preview", attemptNumber: 0 },
+      questions,
+      timeLimit: quiz.timeLimit,
+    });
+  }
+
+  // ── Normal student flow ──────────────────────────────────────────────────────
   const enrollment = await Enrollment.findOne({
     student: req.user._id,
     course: quiz.lesson.courseId,
@@ -234,9 +256,7 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
       status: { $in: ["submitted", "graded"] },
     });
     if (attemptCount >= quiz.maxAttempts) {
-      return next(
-        new AppError(`Maximum attempts (${quiz.maxAttempts}) reached.`, 400),
-      );
+      return next(new AppError(`Maximum attempts (${quiz.maxAttempts}) reached.`, 400));
     }
   }
 
@@ -246,21 +266,14 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
     status: "in_progress",
   });
   if (existing) {
-    return res
-      .status(200)
-      .json({ success: true, attempt: existing, resumed: true });
+    return res.status(200).json({ success: true, attempt: existing, resumed: true });
   }
 
   const attemptNumber =
-    (await QuizAttempt.countDocuments({
-      quiz: quiz._id,
-      student: req.user._id,
-    })) + 1;
+    (await QuizAttempt.countDocuments({ quiz: quiz._id, student: req.user._id })) + 1;
 
   let questions = [...quiz.questions];
-  if (quiz.shuffleQuestions) {
-    questions = questions.sort(() => Math.random() - 0.5);
-  }
+  if (quiz.shuffleQuestions) questions = questions.sort(() => Math.random() - 0.5);
 
   const attempt = await QuizAttempt.create({
     quiz: quiz._id,
@@ -280,12 +293,7 @@ export const startQuizAttempt = asyncHandler(async (req, res, next) => {
     order: q.order,
   }));
 
-  res.status(201).json({
-    success: true,
-    attempt,
-    questions: safeQuestions,
-    timeLimit: quiz.timeLimit,
-  });
+  res.status(201).json({ success: true, attempt, questions: safeQuestions, timeLimit: quiz.timeLimit });
 });
 
 // ─── Auto-grading engine ──────────────────────────────────────────────────────
@@ -362,6 +370,48 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
   const quiz = await Quiz.findById(req.params.quizId);
   if (!quiz) return next(new AppError("Quiz not found.", 404));
 
+  // ── Admin preview: grade in memory only, no DB writes ───────────────────────
+  if (req.user.role === "admin") {
+    const { gradedAnswers, totalPoints, earnedPoints, scorePercent } =
+      gradeAttempt(quiz, answers || []);
+    const passed = scorePercent >= quiz.passMark;
+
+    const resultQuestions = quiz.questions.map((q) => {
+      const gradedAnswer = gradedAnswers.find(
+        (a) => a.questionId.toString() === q._id.toString(),
+      );
+      return {
+        _id: q._id,
+        questionText: q.questionText,
+        questionType: q.questionType,
+        options: q.options,
+        correctAnswers: q.correctAnswers,
+        explanation: q.explanation,
+        points: q.points,
+        studentAnswer: gradedAnswer,
+      };
+    });
+
+    return res.status(200).json({
+      success: true,
+      isAdminPreview: true,
+      message: passed ? "Quiz passed! 🎉 (Admin preview)" : "Quiz submitted. (Admin preview)",
+      result: {
+        attemptId: "admin-preview",
+        scorePercent,
+        earnedPoints,
+        totalPoints,
+        passed,
+        passMark: quiz.passMark,
+        attemptNumber: 0,
+        timeTakenSeconds: timeTakenSeconds || 0,
+        certificateIssued: false,
+      },
+      questions: resultQuestions,
+    });
+  }
+
+  // ── Normal student flow ──────────────────────────────────────────────────────
   const attempt = await QuizAttempt.findOne({
     _id: attemptId,
     quiz: quiz._id,
@@ -369,6 +419,8 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
     status: "in_progress",
   });
   if (!attempt) return next(new AppError("Active attempt not found.", 404));
+
+  // ... rest of existing student submit logic unchanged
 
   // Grade the attempt
   const { gradedAnswers, totalPoints, earnedPoints, scorePercent } =
@@ -499,19 +551,30 @@ export const submitQuizAttempt = asyncHandler(async (req, res, next) => {
 // @route  GET /api/quizzes/:quizId/my-attempts
 // @access Student
 export const getMyAttempts = asyncHandler(async (req, res, next) => {
-  const quiz = await Quiz.findById(req.params.quizId).select(
-    "maxAttempts passMark title",
-  );
+  const quiz = await Quiz.findById(req.params.quizId).select("maxAttempts passMark title");
   if (!quiz) return next(new AppError("Quiz not found.", 404));
 
+  // ── Admin preview: return quiz info with no attempts ────────────────────────
+  if (req.user.role === "admin") {
+    return res.status(200).json({
+      success: true,
+      isAdminPreview: true,
+      quiz: { title: quiz.title, maxAttempts: quiz.maxAttempts, passMark: quiz.passMark },
+      attemptsUsed: 0,
+      attemptsRemaining: "unlimited",
+      bestScore: null,
+      hasPassed: false,
+      attempts: [],
+    });
+  }
+
+  // ── Normal student flow ──────────────────────────────────────────────────────
   const attempts = await QuizAttempt.find({
     quiz: quiz._id,
     student: req.user._id,
   }).sort({ createdAt: -1 });
 
-  const attemptsUsed = attempts.filter(
-    (a) => a.status !== "in_progress",
-  ).length;
+  const attemptsUsed = attempts.filter((a) => a.status !== "in_progress").length;
   const bestAttempt = attempts.reduce(
     (best, a) => (!best || a.scorePercent > best.scorePercent ? a : best),
     null,
@@ -519,16 +582,10 @@ export const getMyAttempts = asyncHandler(async (req, res, next) => {
 
   res.status(200).json({
     success: true,
-    quiz: {
-      title: quiz.title,
-      maxAttempts: quiz.maxAttempts,
-      passMark: quiz.passMark,
-    },
+    quiz: { title: quiz.title, maxAttempts: quiz.maxAttempts, passMark: quiz.passMark },
     attemptsUsed,
     attemptsRemaining:
-      quiz.maxAttempts === 0
-        ? "unlimited"
-        : Math.max(0, quiz.maxAttempts - attemptsUsed),
+      quiz.maxAttempts === 0 ? "unlimited" : Math.max(0, quiz.maxAttempts - attemptsUsed),
     bestScore: bestAttempt?.scorePercent ?? null,
     hasPassed: attempts.some((a) => a.passed),
     attempts,
