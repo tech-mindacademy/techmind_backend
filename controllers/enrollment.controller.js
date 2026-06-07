@@ -9,14 +9,12 @@ const FINAL_SECTION_PATTERN = /final\s*(quiz|assessment|exam|test)/i;
 // then recomputes progressPercent. Mutates the enrollment doc in-place.
 // Call this any time the course structure may have changed.
 const syncProgress = (enrollment, course) => {
-  // Build a Set of all lesson IDs currently in the course
   const validLessonIds = new Set(
     course.sections.flatMap((sec) => sec.lessons.map((l) => l._id.toString())),
   );
 
   const totalLessons = validLessonIds.size;
 
-  // Remove completed entries that are no longer in the course
   enrollment.completedLessons = enrollment.completedLessons.filter((cl) =>
     validLessonIds.has(cl.lesson.toString()),
   );
@@ -26,8 +24,23 @@ const syncProgress = (enrollment, course) => {
       ? Math.round((enrollment.completedLessons.length / totalLessons) * 100)
       : 0;
 
-  // If progress dropped below 100% due to new lessons being added, un-complete the course
-  if (enrollment.progressPercent < 100 && !enrollment.certificateIssued) {
+  const hasFinalQuizSection = course.sections.some((sec) =>
+    FINAL_SECTION_PATTERN.test(sec.title),
+  );
+
+  // If course has a final quiz section, completion is ONLY allowed via quiz pass.
+  // So if certificate hasn't been issued yet, never let isCompleted be true.
+  if (hasFinalQuizSection && !enrollment.certificateIssued) {
+    enrollment.isCompleted = false;
+    enrollment.completedAt = null;
+  }
+
+  // For non-final-quiz courses: un-complete if progress dropped below 100
+  if (
+    !hasFinalQuizSection &&
+    enrollment.progressPercent < 100 &&
+    !enrollment.certificateIssued
+  ) {
     enrollment.isCompleted = false;
     enrollment.completedAt = null;
   }
@@ -101,13 +114,20 @@ export const getMyEnrollments = asyncHandler(async (req, res) => {
     })
     .sort({ createdAt: -1 });
 
-  // Sync and save any enrollment whose progress is stale
   const savePromises = [];
   for (const enrollment of enrollments) {
-    if (!enrollment.course) continue; // course was deleted
-    const before = enrollment.progressPercent;
+    if (!enrollment.course) continue;
+    const beforeProgress = enrollment.progressPercent;
+    const beforeCompleted = enrollment.isCompleted;
+    const beforeCert = enrollment.certificateIssued;
+
     syncProgress(enrollment, enrollment.course);
-    if (enrollment.progressPercent !== before) {
+
+    if (
+      enrollment.progressPercent !== beforeProgress ||
+      enrollment.isCompleted !== beforeCompleted ||
+      enrollment.certificateIssued !== beforeCert
+    ) {
       savePromises.push(enrollment.save());
     }
   }
@@ -127,12 +147,19 @@ export const getEnrollment = asyncHandler(async (req, res, next) => {
   if (!enrollment)
     return next(new AppError("Not enrolled in this course.", 404));
 
-  // Load current course structure to validate completed lessons
   const course = await Course.findById(req.params.courseId).select("sections");
   if (course) {
-    const before = enrollment.progressPercent;
+    const beforeProgress = enrollment.progressPercent;
+    const beforeCompleted = enrollment.isCompleted;
+    const beforeCert = enrollment.certificateIssued;
+
     syncProgress(enrollment, course);
-    if (enrollment.progressPercent !== before) {
+
+    if (
+      enrollment.progressPercent !== beforeProgress ||
+      enrollment.isCompleted !== beforeCompleted ||
+      enrollment.certificateIssued !== beforeCert
+    ) {
       await enrollment.save();
     }
   }
@@ -195,7 +222,7 @@ export const markLessonComplete = asyncHandler(async (req, res, next) => {
     if (
       enrollment.progressPercent === 100 &&
       !enrollment.isCompleted &&
-      !hasFinalQuizSection
+      !hasFinalQuizSection // ← this MUST be here
     ) {
       enrollment.isCompleted = true;
       enrollment.completedAt = new Date();
