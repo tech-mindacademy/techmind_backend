@@ -219,15 +219,14 @@ export const markLessonComplete = asyncHandler(async (req, res, next) => {
       FINAL_SECTION_PATTERN.test(sec.title),
     );
 
+    // REPLACE WITH:
     if (
       enrollment.progressPercent === 100 &&
       !enrollment.isCompleted &&
-      !hasFinalQuizSection // ← this MUST be here
+      !hasFinalQuizSection
     ) {
       enrollment.isCompleted = true;
       enrollment.completedAt = new Date();
-      enrollment.certificateIssued = true;
-      enrollment.certificateIssuedAt = new Date();
     }
 
     // if (enrollment.progressPercent === 100 && !enrollment.isCompleted) {
