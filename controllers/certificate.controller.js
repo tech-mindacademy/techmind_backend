@@ -4,6 +4,9 @@ import CertificateOrder from "../models/CertificateOrder.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { sendEmail } from "../utils/email.utils.js";
 import { fillCertificate } from "../utils/fillCertificate.js";
+mport https from "https";
+import http from "http";
+import { URL } from "url";
 
 const getRazorpay = () => {
   if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
@@ -25,7 +28,7 @@ const CERTIFICATE_PRICES = {
 };
 
 const logToSheet = (payload) => {
-  fetch(process.env.GOOGLE_SHEET_URL, {
+  fetch(process.env.GOOGLE_SCRIPT_URL, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
