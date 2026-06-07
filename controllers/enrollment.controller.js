@@ -27,7 +27,7 @@ const syncProgress = (enrollment, course) => {
       : 0;
 
   // If progress dropped below 100% due to new lessons being added, un-complete the course
-  if (enrollment.progressPercent < 100) {
+  if (enrollment.progressPercent < 100 && !enrollment.certificateIssued) {
     enrollment.isCompleted = false;
     enrollment.completedAt = null;
   }
@@ -58,13 +58,11 @@ export const enrollFree = asyncHandler(async (req, res, next) => {
     course: course._id,
   });
   if (existing) {
-    return res
-      .status(200)
-      .json({
-        success: true,
-        message: "Already enrolled.",
-        enrollment: existing,
-      });
+    return res.status(200).json({
+      success: true,
+      message: "Already enrolled.",
+      enrollment: existing,
+    });
   }
 
   const enrollment = await Enrollment.create({
