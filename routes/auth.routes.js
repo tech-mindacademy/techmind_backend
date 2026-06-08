@@ -45,7 +45,7 @@ router.post("/forgot-password", forgotPassword);
 router.post("/reset-password/:token", resetPassword);
 
 // ─── Private routes ───────────────────────────────────────────────────────────
-router.post("/logout", protect, logout);
+router.post("/logout", logout);
 router.get("/me", protect, getMe);
 router.put("/profile", protect, uploadImage.single("avatar"), updateProfile);
 router.put("/change-password", protect, changePassword);
