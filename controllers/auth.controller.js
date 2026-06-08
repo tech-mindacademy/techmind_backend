@@ -150,7 +150,7 @@ export const logout = asyncHandler(async (req, res, next) => {
   res.clearCookie("refreshToken", {
     httpOnly: true,
     secure: true,
-    sameSite: "lax",  // ← must match sendTokens exactly
+    sameSite: "none",  // ← must match sendTokens exactly
     path: "/",
   });
  
