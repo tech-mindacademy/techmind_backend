@@ -10,7 +10,7 @@ export const generateAccessToken = (userId, role) => {
 // ─── Generate long-lived refresh token (7d) ───────────────────────────────────
 export const generateRefreshToken = (userId, role) => {
   return jwt.sign({ id: userId, role }, process.env.JWT_REFRESH_SECRET, {
-    expiresIn: process.env.JWT_REFRESH_EXPIRE || "1d",
+    expiresIn: process.env.JWT_REFRESH_EXPIRE || "7d",
   });
 };
 
@@ -19,15 +19,16 @@ export const sendTokens = (res, user, statusCode, message) => {
   const accessToken = generateAccessToken(user._id, user.role);
   const refreshToken = generateRefreshToken(user._id, user.role);
 
-  // Refresh token in secure httpOnly cookie (not accessible by JS)
+  // Requests are now proxied through Vercel → same-site, so sameSite:"lax"
+  // works and is not blocked by browser privacy settings unlike "none"
   res.cookie("refreshToken", refreshToken, {
-  httpOnly: true,
-  secure: true,
-  sameSite: "none",
-  maxAge: 1 * 24 * 60 * 60 * 1000,
-});
+    httpOnly: true,
+    secure: true,
+    sameSite: "lax",
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+    path: "/",
+  });
 
-  // Strip sensitive fields from response
   const userData = {
     _id: user._id,
     name: user.name,
