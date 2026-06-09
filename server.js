@@ -26,6 +26,7 @@ import reviewRoutes from "./routes/Review.routes.js";
 import statsRoutes from "./routes/stats.routes.js";
 import refundRoutes from "./routes/refund.routes.js";
 import contactRoutes from "./routes/contact.routes.js";
+import blogRoutes from "./routes/blog.routes.js";
 
 connectDB();
 
@@ -84,6 +85,7 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/stats", statsRoutes);
 app.use("/api/refunds", refundRoutes);
 app.use("/api/contact", contactRoutes);
+app.use("/api/blogs", blogRoutes);
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,
