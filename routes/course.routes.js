@@ -9,7 +9,8 @@ import {
   deleteCourse,
   togglePublish,
   uploadPreviewVideo,
-  getCategories
+  getCategories,
+  getAdminCoursePreview,       
 } from "../controllers/course.controller.js";
 import {
   addSection,
@@ -32,10 +33,9 @@ import {
 
 import { protect, authorizeRoles, requireVerified } from "../middleware/auth.middleware.js";
 import { uploadVideo, uploadPDF, uploadImage } from "../config/cloudinary.js";
+import { optionalAuth } from "../middleware/optionalAuth.middleware.js";
 
 const router = express.Router();
-
-import { optionalAuth } from "../middleware/optionalAuth.middleware.js";
 
 // ─── Creator: must be BEFORE /:slug to avoid being swallowed ─────────────────
 router.get(
@@ -45,10 +45,18 @@ router.get(
   getMyCoursesAsCreator
 );
 
+// ─── Admin preview — no approval/publish gate ─────────────────────────────────
+// Must also be BEFORE /:slug
+router.get(
+  "/admin-preview/:courseId",
+  protect,
+  authorizeRoles("admin"),
+  getAdminCoursePreview
+);
+
 // ─── Public ──────────────────────────────────────────────────────────────────
 router.get("/", optionalAuth, getCourses);
 router.get("/categories", getCategories);
-// Authenticated user gets richer response (enrollment status, unlocked videos)
 router.get("/:slug", optionalAuth, getCourseBySlug);
 
 router.post(
@@ -93,116 +101,60 @@ router.post(
   "/:courseId/preview-video",
   protect,
   authorizeRoles("creator"),
-
-  (req, res, next) => {
-    console.log("ROUTE HIT");
-    next();
-  },
-
+  (req, res, next) => { console.log("ROUTE HIT"); next(); },
   uploadVideo.single("video"),
-
-  (req, res, next) => {
-    console.log("AFTER MULTER", req.file);
-    next();
-  },
-
+  (req, res, next) => { console.log("AFTER MULTER", req.file); next(); },
   uploadPreviewVideo
 );
 
 // ─── Sections ─────────────────────────────────────────────────────────────────
-router.post(
-  "/:courseId/sections",
-  protect,
-  authorizeRoles("creator"),
-  addSection
-);
-router.put(
-  "/:courseId/sections/:sectionId",
-  protect,
-  authorizeRoles("creator"),
-  updateSection
-);
-router.delete(
-  "/:courseId/sections/:sectionId",
-  protect,
-  authorizeRoles("creator"),
-  deleteSection
-);
-router.patch(
-  "/:courseId/sections/reorder",
-  protect,
-  authorizeRoles("creator"),
-  reorderSections
-);
+router.post("/:courseId/sections", protect, authorizeRoles("creator"), addSection);
+router.put("/:courseId/sections/:sectionId", protect, authorizeRoles("creator"), updateSection);
+router.delete("/:courseId/sections/:sectionId", protect, authorizeRoles("creator"), deleteSection);
+router.patch("/:courseId/sections/reorder", protect, authorizeRoles("creator"), reorderSections);
 
 // ─── Lessons ─────────────────────────────────────────────────────────────────
-router.post(
-  "/:courseId/sections/:sectionId/lessons",
-  protect,
-  authorizeRoles("creator"),
-  addLesson
-);
-router.put(
-  "/:courseId/sections/:sectionId/lessons/:lessonId",
-  protect,
-  authorizeRoles("creator"),
-  updateLesson
-);
-router.delete(
-  "/:courseId/sections/:sectionId/lessons/:lessonId",
-  protect,
-  authorizeRoles("creator"),
-  deleteLesson
-);
-router.patch(
-  "/:courseId/sections/:sectionId/lessons/reorder",
-  protect,
-  authorizeRoles("creator"),
-  reorderLessons
-);
+router.post("/:courseId/sections/:sectionId/lessons", protect, authorizeRoles("creator"), addLesson);
+router.put("/:courseId/sections/:sectionId/lessons/:lessonId", protect, authorizeRoles("creator"), updateLesson);
+router.delete("/:courseId/sections/:sectionId/lessons/:lessonId", protect, authorizeRoles("creator"), deleteLesson);
+router.patch("/:courseId/sections/:sectionId/lessons/reorder", protect, authorizeRoles("creator"), reorderLessons);
 
 // ─── Lesson Video ─────────────────────────────────────────────────────────────
 router.post(
   "/:courseId/sections/:sectionId/lessons/:lessonId/video",
-  protect,
-  authorizeRoles("creator"),
+  protect, authorizeRoles("creator"),
   uploadVideo.single("video"),
   uploadLessonVideo
 );
 router.delete(
   "/:courseId/sections/:sectionId/lessons/:lessonId/video",
-  protect,
-  authorizeRoles("creator"),
+  protect, authorizeRoles("creator"),
   deleteLessonVideo
 );
 
 // ─── Lesson Notes ─────────────────────────────────────────────────────────────
 router.post(
   "/:courseId/sections/:sectionId/lessons/:lessonId/notes",
-  protect,
-  authorizeRoles("creator"),
+  protect, authorizeRoles("creator"),
   uploadPDF.single("file"),
   uploadLessonNote
 );
 router.delete(
   "/:courseId/sections/:sectionId/lessons/:lessonId/notes/:noteId",
-  protect,
-  authorizeRoles("creator"),
+  protect, authorizeRoles("creator"),
   deleteLessonNote
 );
 
 // ─── Enrollment ───────────────────────────────────────────────────────────────
 router.post(
   "/:courseId/enroll",
-  protect,
-  authorizeRoles("student"),
+  protect, authorizeRoles("student"),
   requireVerified,
   enrollFree
 );
 router.get(
   "/:courseId/enrollments",
-  protect,
-  authorizeRoles("creator", "admin"),
+  protect, authorizeRoles("creator", "admin"),
   getCourseEnrollments
 );
 
