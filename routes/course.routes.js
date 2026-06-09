@@ -10,7 +10,7 @@ import {
   togglePublish,
   uploadPreviewVideo,
   getCategories,
-  getAdminCoursePreview,       
+  getAdminCoursePreview,
 } from "../controllers/course.controller.js";
 import {
   addSection,
@@ -45,18 +45,20 @@ router.get(
   getMyCoursesAsCreator
 );
 
-// ─── Admin preview — no approval/publish gate ─────────────────────────────────
-// Must also be BEFORE /:slug
+// ─── Public ──────────────────────────────────────────────────────────────────
+router.get("/", optionalAuth, getCourses);
+router.get("/categories", getCategories);
+
+// Admin preview — must be BEFORE /:slug to avoid being caught by the wildcard.
+// Uses protect so req.user is guaranteed (no optionalAuth ambiguity).
+// Accepts both slug and ObjectId — controller handles both.
 router.get(
-  "/admin-preview/:courseId",
+  "/preview/:courseId",   // :courseId can be a slug OR an ObjectId
   protect,
   authorizeRoles("admin"),
   getAdminCoursePreview
 );
 
-// ─── Public ──────────────────────────────────────────────────────────────────
-router.get("/", optionalAuth, getCourses);
-router.get("/categories", getCategories);
 router.get("/:slug", optionalAuth, getCourseBySlug);
 
 router.post(

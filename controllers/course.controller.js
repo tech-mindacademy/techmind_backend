@@ -81,16 +81,22 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
   const param = req.params.slug;
 
   const isObjectId = /^[a-f\d]{24}$/i.test(param);
-  const query = isObjectId
-    ? { _id: param }
-    : { slug: param, isPublished: true, approvalStatus: "approved" };
 
-  if (
-    isObjectId &&
-    req.user &&
-    (req.user.role === "creator" || req.user.role === "admin")
-  ) {
-    delete query.isPublished;
+  // Admins can see any course regardless of publish/approval state
+  const isAdmin = req.user && req.user.role === "admin";
+
+  let query;
+  if (isObjectId) {
+    query = { _id: param };
+    // Non-admins still can't see unpublished courses by ID
+    if (!isAdmin) query.isPublished = true;
+  } else {
+    query = { slug: param };
+    // Non-admins only see approved + published courses
+    if (!isAdmin) {
+      query.isPublished = true;
+      query.approvalStatus = "approved";
+    }
   }
 
   const course = await Course.findOne(query).populate(
@@ -112,8 +118,7 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
 
   const isOwner =
     req.user &&
-    (course.creator._id.toString() === req.user._id.toString() ||
-      req.user.role === "admin");
+    (course.creator._id.toString() === req.user._id.toString() || isAdmin);
 
   const courseObj = course.toObject();
   if (!isEnrolled && !isOwner) {
@@ -177,10 +182,13 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
 // @route  GET /api/admin/courses/:courseId/preview
 // @access Admin only
 export const getAdminCoursePreview = asyncHandler(async (req, res, next) => {
-  const course = await Course.findById(req.params.courseId).populate(
-    "creator",
-    "name avatar bio",
-  );
+  const param = req.params.courseId;
+  const isObjectId = /^[a-f\d]{24}$/i.test(param);
+
+  // Accept both MongoDB ObjectId and slug — frontend passes whatever is in the URL
+  const course = await Course.findOne(
+    isObjectId ? { _id: param } : { slug: param }
+  ).populate("creator", "name avatar bio");
 
   if (!course) return next(new AppError("Course not found.", 404));
 
