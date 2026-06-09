@@ -59,7 +59,7 @@ export const createBlog = asyncHandler(async (req, res) => {
   });
 
   if (req.file) {
-    blog.coverImage = { public_id: req.file.public_id, url: req.file.path };
+    blog.coverImage = { public_id: req.file.filename, url: req.file.path };
   }
 
   await blog.save();
@@ -83,7 +83,7 @@ export const updateBlog = asyncHandler(async (req, res, next) => {
     if (blog.coverImage?.public_id) {
       await cloudinary.uploader.destroy(blog.coverImage.public_id).catch(() => {});
     }
-    blog.coverImage = { public_id: req.file.public_id, url: req.file.path };
+    blog.coverImage = { public_id: req.file.filename, url: req.file.path };
   }
 
   await blog.save();
