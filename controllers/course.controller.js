@@ -452,3 +452,44 @@ export const getCategories = asyncHandler(async (req, res) => {
 
   res.status(200).json({ success: true, categories: categories.sort() });
 });
+// @route  GET /api/courses/:courseId/sections/:sectionId/lessons/:lessonId/stream
+// @access Enrolled student | Creator | Admin
+export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
+  const { courseId, sectionId, lessonId } = req.params;
+
+  const course = await Course.findById(courseId);
+  if (!course) return next(new AppError("Course not found.", 404));
+
+  const isOwner = course.creator.toString() === req.user._id.toString();
+  const isAdmin = req.user.role === "admin";
+
+  if (!isOwner && !isAdmin) {
+    const enrollment = await Enrollment.findOne({
+      student: req.user._id,
+      course: courseId,
+    });
+    if (!enrollment) return next(new AppError("Not enrolled.", 403));
+  }
+
+  const section = course.sections.id(sectionId);
+  if (!section) return next(new AppError("Section not found.", 404));
+
+  const lesson = section.lessons.id(lessonId);
+  if (!lesson) return next(new AppError("Lesson not found.", 404));
+
+  if (!lesson.video?.public_id) {
+    return next(new AppError("No video for this lesson.", 404));
+  }
+
+  const signedUrl = cloudinary.url(lesson.video.public_id, {
+    resource_type: "video",
+    type: "authenticated",
+    secure: true,
+    sign_url: true,
+    streaming_profile: "full_hd",
+    format: "m3u8",
+    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
+  });
+
+  res.json({ success: true, url: signedUrl, expiresIn: 7200 });
+});

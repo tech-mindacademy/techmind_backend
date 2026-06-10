@@ -11,6 +11,7 @@ import {
   uploadPreviewVideo,
   getCategories,
   getAdminCoursePreview,
+  getLessonStreamUrl,
 } from "../controllers/course.controller.js";
 import {
   addSection,
@@ -158,6 +159,12 @@ router.get(
   "/:courseId/enrollments",
   protect, authorizeRoles("creator", "admin"),
   getCourseEnrollments
+);
+// ─── Lesson Stream URL ────────────────────────────────────────────────────────
+router.get(
+  "/:courseId/sections/:sectionId/lessons/:lessonId/stream",
+  protect,
+  getLessonStreamUrl
 );
 
 export default router;
