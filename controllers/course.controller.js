@@ -273,6 +273,9 @@ export const createCourse = asyncHandler(async (req, res, next) => {
       : { public_id: "", url: "" },
   });
 
+  course.sections.push({ title: "Final Quiz", order: 0, lessons: [] });
+await course.save();
+
   res.status(201).json({ success: true, message: "Course created.", course });
 });
 
@@ -380,6 +383,21 @@ export const togglePublish = asyncHandler(async (req, res, next) => {
   if (!course.isPublished && !hasContent) {
     return next(new AppError("Add at least one lesson before publishing.", 400));
   }
+  const FINAL_SECTION_PATTERN = /final\s*(quiz|assessment|exam|test)/i;
+
+// Only validate when publishing (not unpublishing)
+if (!course.isPublished) {
+  const finalSection = course.sections.find(s => FINAL_SECTION_PATTERN.test(s.title));
+
+  if (!finalSection) {
+    return next(new AppError("A 'Final Quiz' section is required before publishing.", 400));
+  }
+
+  const hasQuizLesson = finalSection.lessons.some(l => l.quiz);
+  if (!hasQuizLesson) {
+    return next(new AppError("The Final Quiz section must have at least one lesson with a quiz attached before publishing.", 400));
+  }
+}
 
   course.isPublished = !course.isPublished;
   if (course.isPublished) {

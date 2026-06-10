@@ -1,7 +1,7 @@
 import Course from "../models/Course.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { cloudinary } from "../config/cloudinary.js";
-
+const FINAL_SECTION_PATTERN = /final\s*(quiz|assessment|exam|test)/i;
 // ─── Helper: find course and verify creator ownership ─────────────────────────
 const findCourseForCreator = async (courseId, userId, role) => {
   const course = await Course.findById(courseId);
@@ -38,6 +38,11 @@ export const updateSection = asyncHandler(async (req, res, next) => {
   const section = course.sections.id(req.params.sectionId);
   if (!section) return next(new AppError("Section not found.", 404));
 
+  // 🔒 Prevent renaming the Final Quiz section
+  if (FINAL_SECTION_PATTERN.test(section.title)) {
+    return next(new AppError("The Final Quiz section title cannot be changed.", 400));
+  }
+
   if (req.body.title) section.title = req.body.title.trim();
   await course.save();
 
@@ -51,6 +56,10 @@ export const deleteSection = asyncHandler(async (req, res, next) => {
 
   const section = course.sections.id(req.params.sectionId);
   if (!section) return next(new AppError("Section not found.", 404));
+
+  if (FINAL_SECTION_PATTERN.test(section.title)) {
+    return next(new AppError("The Final Quiz section is mandatory and cannot be deleted.", 400));
+  }
 
   // Clean up all lesson videos/notes in this section from Cloudinary
   const destroys = [];
