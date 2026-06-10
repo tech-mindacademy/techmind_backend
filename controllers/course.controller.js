@@ -527,39 +527,50 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
 
   // Fetch the m3u8 manifest from Cloudinary
   const cloudinaryRes = await fetch(signedUrl);
+
   if (!cloudinaryRes.ok) {
+    console.error("Cloudinary manifest fetch failed:", cloudinaryRes.status, await cloudinaryRes.text());
     return next(new AppError("Failed to fetch video stream.", 502));
   }
 
-  let manifest = await cloudinaryRes.text();
+  const manifest = await cloudinaryRes.text();
 
-  // Rewrite segment URLs in manifest to go through our proxy too
-  const baseUrl = signedUrl.substring(0, signedUrl.lastIndexOf("/") + 1);
-  manifest = manifest.replace(
-    /^((?!#).+\.ts.*)$/gm,
-    (match) => {
-      const segmentUrl = match.startsWith("http") ? match : baseUrl + match;
-      const encoded = encodeURIComponent(segmentUrl);
-      return `/api/courses/proxy-segment?url=${encoded}&token=${req.headers.authorization?.split(" ")[1]}`;
-    }
-  );manifest = manifest.replace(
-  /^((?!#).+\.ts.*)$/gm,
-  (match) => {
-    const segmentUrl = match.startsWith("http") ? match : baseUrl + match;
-    const encoded = encodeURIComponent(segmentUrl);
-    return `/api/courses/proxy-segment?url=${encoded}`; // no token needed
-  }
-);
+  // Log manifest to debug
+  console.log("Original manifest:\n", manifest);
+
+  // Get base URL for resolving relative segment URLs
+  const urlObj = new URL(signedUrl);
+  const basePath = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
+  const baseQuery = urlObj.search; // preserve the signature query params
+
+  // Rewrite every non-comment line (segments, sub-playlists)
+  const rewritten = manifest.split("\n").map((line) => {
+    const trimmed = line.trim();
+
+    // Skip comments and empty lines
+    if (!trimmed || trimmed.startsWith("#")) return line;
+
+    // Build absolute Cloudinary URL
+    const absoluteUrl = trimmed.startsWith("http")
+      ? trimmed
+      : basePath + trimmed + (baseQuery && !trimmed.includes("?") ? baseQuery : "");
+
+    const encoded = encodeURIComponent(absoluteUrl);
+    return `/api/courses/proxy-segment?url=${encoded}`;
+  }).join("\n");
+
+  console.log("Rewritten manifest:\n", rewritten);
 
   res.set({
     "Content-Type": "application/vnd.apple.mpegurl",
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     "Pragma": "no-cache",
     "Expires": "0",
-    "Access-Control-Allow-Origin": "*",
+    "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
+    "Access-Control-Allow-Credentials": "true",
   });
 
-  res.send(manifest);
+  res.send(rewritten);
 });
 
 // Proxy individual .ts segments
