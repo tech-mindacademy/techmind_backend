@@ -56,7 +56,7 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-
+app.set("etag", false);
 // Stripe webhook needs raw body — mount BEFORE express.json()
 // ✅ FIRST parse JSON
 app.use(express.json({ limit: "10mb" }));

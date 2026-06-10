@@ -562,13 +562,15 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   console.log("Rewritten manifest:\n", rewritten);
 
   res.set({
-    "Content-Type": "application/vnd.apple.mpegurl",
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    "Pragma": "no-cache",
-    "Expires": "0",
-    "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
-    "Access-Control-Allow-Credentials": "true",
-  });
+  "Content-Type": "application/vnd.apple.mpegurl",
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+  "Pragma": "no-cache",
+  "Expires": "0",
+  "ETag": `"${Date.now()}"`, // unique every request
+  "Last-Modified": new Date().toUTCString(),
+  "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
+  "Access-Control-Allow-Credentials": "true",
+});
 
   res.send(rewritten);
 });
