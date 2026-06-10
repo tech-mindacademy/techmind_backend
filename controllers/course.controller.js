@@ -468,19 +468,23 @@ export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
   }
 
   const signedUrl = cloudinary.url(lesson.video.public_id, {
-    resource_type: "video",
-    type: "authenticated",
-    secure: true,
-    sign_url: true,
-    streaming_profile: "full_hd",
-    format: "m3u8",
-    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
-  });
+  resource_type: "video",
+  type: "authenticated",
+  secure: true,
+  sign_url: true,
+  streaming_profile: "full_hd",
+  format: "m3u8",
+  expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
+});
 
-  // ← Add these headers to prevent caching
-  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-  res.set("Pragma", "no-cache");
-  res.set("Expires", "0");
+// Append cache buster so browser never serves from HTTP cache
+const bustUrl = `${signedUrl}&_cb=${Date.now()}`;
 
-  res.json({ success: true, url: signedUrl, expiresIn: 7200 });
+res.set({
+  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+  "Pragma": "no-cache",
+  "Expires": "0",
+});
+
+res.json({ success: true, url: bustUrl, expiresIn: 7200 });
 });
