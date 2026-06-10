@@ -3,6 +3,7 @@ import Enrollment from "../models/Enrollment.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { cloudinary } from "../config/cloudinary.js";
 import streamifier from "streamifier";
+import fetch from "node-fetch";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC ENDPOINTS
@@ -486,4 +487,100 @@ res.set({
 });
 
 res.json({ success: true, url: signedUrl, expiresIn: 7200 });
+});
+export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
+  const { courseId, sectionId, lessonId } = req.params;
+
+  const course = await Course.findById(courseId);
+  if (!course) return next(new AppError("Course not found.", 404));
+
+  const isOwner = course.creator.toString() === req.user._id.toString();
+  const isAdmin = req.user.role === "admin";
+
+  if (!isOwner && !isAdmin) {
+    const enrollment = await Enrollment.findOne({
+      student: req.user._id,
+      course: courseId,
+    });
+    if (!enrollment) return next(new AppError("Not enrolled.", 403));
+  }
+
+  const section = course.sections.id(sectionId);
+  if (!section) return next(new AppError("Section not found.", 404));
+
+  const lesson = section.lessons.id(lessonId);
+  if (!lesson) return next(new AppError("Lesson not found.", 404));
+
+  if (!lesson.video?.public_id) {
+    return next(new AppError("No video for this lesson.", 404));
+  }
+
+  const signedUrl = cloudinary.url(lesson.video.public_id, {
+    resource_type: "video",
+    type: "authenticated",
+    secure: true,
+    sign_url: true,
+    streaming_profile: "full_hd",
+    format: "m3u8",
+    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
+  });
+
+  // Fetch the m3u8 manifest from Cloudinary
+  const cloudinaryRes = await fetch(signedUrl);
+  if (!cloudinaryRes.ok) {
+    return next(new AppError("Failed to fetch video stream.", 502));
+  }
+
+  let manifest = await cloudinaryRes.text();
+
+  // Rewrite segment URLs in manifest to go through our proxy too
+  const baseUrl = signedUrl.substring(0, signedUrl.lastIndexOf("/") + 1);
+  manifest = manifest.replace(
+    /^((?!#).+\.ts.*)$/gm,
+    (match) => {
+      const segmentUrl = match.startsWith("http") ? match : baseUrl + match;
+      const encoded = encodeURIComponent(segmentUrl);
+      return `/api/courses/proxy-segment?url=${encoded}&token=${req.headers.authorization?.split(" ")[1]}`;
+    }
+  );manifest = manifest.replace(
+  /^((?!#).+\.ts.*)$/gm,
+  (match) => {
+    const segmentUrl = match.startsWith("http") ? match : baseUrl + match;
+    const encoded = encodeURIComponent(segmentUrl);
+    return `/api/courses/proxy-segment?url=${encoded}`; // no token needed
+  }
+);
+
+  res.set({
+    "Content-Type": "application/vnd.apple.mpegurl",
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Access-Control-Allow-Origin": "*",
+  });
+
+  res.send(manifest);
+});
+
+// Proxy individual .ts segments
+export const proxySegment = asyncHandler(async (req, res, next) => {
+  const { url } = req.query;
+  if (!url) return next(new AppError("No URL provided.", 400));
+
+  // req.user is already set by protect middleware — no token needed
+  const segmentUrl = decodeURIComponent(url);
+
+  const segmentRes = await fetch(segmentUrl);
+  if (!segmentRes.ok) {
+    return next(new AppError("Failed to fetch segment.", 502));
+  }
+
+  res.set({
+    "Content-Type": "video/mp2t",
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+  });
+
+  segmentRes.body.pipe(res);
 });
