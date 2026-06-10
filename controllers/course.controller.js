@@ -489,31 +489,7 @@ res.set({
 res.json({ success: true, url: signedUrl, expiresIn: 7200 });
 });
 export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
-  const { courseId, sectionId, lessonId } = req.params;
-
-  const course = await Course.findById(courseId);
-  if (!course) return next(new AppError("Course not found.", 404));
-
-  const isOwner = course.creator.toString() === req.user._id.toString();
-  const isAdmin = req.user.role === "admin";
-
-  if (!isOwner && !isAdmin) {
-    const enrollment = await Enrollment.findOne({
-      student: req.user._id,
-      course: courseId,
-    });
-    if (!enrollment) return next(new AppError("Not enrolled.", 403));
-  }
-
-  const section = course.sections.id(sectionId);
-  if (!section) return next(new AppError("Section not found.", 404));
-
-  const lesson = section.lessons.id(lessonId);
-  if (!lesson) return next(new AppError("Lesson not found.", 404));
-
-  if (!lesson.video?.public_id) {
-    return next(new AppError("No video for this lesson.", 404));
-  }
+  // ... your existing auth + course/section/lesson lookup code ...
 
   const signedUrl = cloudinary.url(lesson.video.public_id, {
     resource_type: "video",
@@ -525,54 +501,43 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
     expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
   });
 
-  // Fetch the m3u8 manifest from Cloudinary
-  const cloudinaryRes = await fetch(signedUrl);
+  // Fetch manifest — explicitly NO Range header so we always get the full manifest
+  const cloudinaryRes = await fetch(signedUrl, {
+    headers: {
+      // Strip Range — we need the full m3u8, not a partial response
+      "Range": "",
+    },
+  });
 
-  if (!cloudinaryRes.ok) {
-    console.error("Cloudinary manifest fetch failed:", cloudinaryRes.status, await cloudinaryRes.text());
+  if (!cloudinaryRes.ok && cloudinaryRes.status !== 206) {
     return next(new AppError("Failed to fetch video stream.", 502));
   }
 
   const manifest = await cloudinaryRes.text();
 
-  // Log manifest to debug
-  console.log("Original manifest:\n", manifest);
-
-  // Get base URL for resolving relative segment URLs
   const urlObj = new URL(signedUrl);
   const basePath = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
-  const baseQuery = urlObj.search; // preserve the signature query params
+  const baseQuery = urlObj.search;
 
-  // Rewrite every non-comment line (segments, sub-playlists)
   const rewritten = manifest.split("\n").map((line) => {
     const trimmed = line.trim();
-
-    // Skip comments and empty lines
     if (!trimmed || trimmed.startsWith("#")) return line;
-
-    // Build absolute Cloudinary URL
     const absoluteUrl = trimmed.startsWith("http")
       ? trimmed
       : basePath + trimmed + (baseQuery && !trimmed.includes("?") ? baseQuery : "");
-
     const encoded = encodeURIComponent(absoluteUrl);
     return `/api/courses/proxy-segment?url=${encoded}`;
   }).join("\n");
 
-  console.log("Rewritten manifest:\n", rewritten);
-
-  res.set({
-  "Content-Type": "application/vnd.apple.mpegurl",
-  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
-  "Pragma": "no-cache",
-  "Expires": "0",
-  "ETag": `"${Date.now()}"`, // unique every request
-  "Last-Modified": new Date().toUTCString(),
-  "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
-  "Access-Control-Allow-Credentials": "true",
-});
-
-  res.send(rewritten);
+  // Force 200 — never 206 for a manifest
+  res.status(200).set({
+    "Content-Type": "application/vnd.apple.mpegurl",
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
+    "Access-Control-Allow-Credentials": "true",
+  }).send(rewritten);
 });
 
 // Proxy individual .ts segments
