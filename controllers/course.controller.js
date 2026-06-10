@@ -134,25 +134,18 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
     }));
   }
   if (isEnrolled || isOwner) {
-    courseObj.sections = courseObj.sections.map((sec) => ({
-      ...sec,
-      lessons: sec.lessons.map((lesson) => {
-        let signedUrl = "";
-        if (lesson.video?.public_id) {
-          signedUrl = cloudinary.url(lesson.video.public_id, {
-            resource_type: "video",
-            type: "authenticated",
-            secure: true,
-            sign_url: true,
-            streaming_profile: "full_hd",
-            format: "m3u8",
-            expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 4,
-          });
-        }
-        return { ...lesson, video: { ...lesson.video, url: signedUrl } };
-      }),
-    }));
-  }
+  courseObj.sections = courseObj.sections.map((sec) => ({
+    ...sec,
+    lessons: sec.lessons.map((lesson) => ({
+      ...lesson,
+      video: {
+        public_id: lesson.video?.public_id || "",
+        duration: lesson.video?.duration || 0,
+        url: "", // signed URL fetched fresh per-lesson via /stream endpoint
+      },
+    })),
+  }));
+}
 
   res.status(200).json({
     success: true,
@@ -196,23 +189,16 @@ export const getAdminCoursePreview = asyncHandler(async (req, res, next) => {
 
   // Give admin full signed video URLs for every lesson
   courseObj.sections = courseObj.sections.map((sec) => ({
-    ...sec,
-    lessons: sec.lessons.map((lesson) => {
-      let signedUrl = "";
-      if (lesson.video?.public_id) {
-        signedUrl = cloudinary.url(lesson.video.public_id, {
-          resource_type: "video",
-          type: "authenticated",
-          secure: true,
-          sign_url: true,
-          streaming_profile: "full_hd",
-          format: "m3u8",
-          expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 4,
-        });
-      }
-      return { ...lesson, video: { ...lesson.video, url: signedUrl } };
-    }),
-  }));
+  ...sec,
+  lessons: sec.lessons.map((lesson) => ({
+    ...lesson,
+    video: {
+      public_id: lesson.video?.public_id || "",
+      duration: lesson.video?.duration || 0,
+      url: "",
+    },
+  })),
+}));
 
   res.status(200).json({ success: true, course: courseObj });
 });
