@@ -3,6 +3,10 @@ import User from "../models/User.model.js";
 
 // ─── Protect: verify access token, attach user to req ────────────────────────
 export const protect = async (req, res, next) => {
+  console.log("protect hit:", req.path);
+  console.log("auth header:", req.headers.authorization);
+  console.log("cookies:", req.cookies);
+  console.log("raw cookie header:", req.headers.cookie);
   try {
     // 1. Get token from Authorization header
     let token;
