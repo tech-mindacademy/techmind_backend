@@ -135,18 +135,18 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
     }));
   }
   if (isEnrolled || isOwner) {
-  courseObj.sections = courseObj.sections.map((sec) => ({
-    ...sec,
-    lessons: sec.lessons.map((lesson) => ({
-      ...lesson,
-      video: {
-        public_id: lesson.video?.public_id || "",
-        duration: lesson.video?.duration || 0,
-        url: "", // signed URL fetched fresh per-lesson via /stream endpoint
-      },
-    })),
-  }));
-}
+    courseObj.sections = courseObj.sections.map((sec) => ({
+      ...sec,
+      lessons: sec.lessons.map((lesson) => ({
+        ...lesson,
+        video: {
+          public_id: lesson.video?.public_id || "",
+          duration: lesson.video?.duration || 0,
+          url: "", // signed URL fetched fresh per-lesson via /stream endpoint
+        },
+      })),
+    }));
+  }
 
   res.status(200).json({
     success: true,
@@ -181,7 +181,7 @@ export const getAdminCoursePreview = asyncHandler(async (req, res, next) => {
 
   // Accept both MongoDB ObjectId and slug — frontend passes whatever is in the URL
   const course = await Course.findOne(
-    isObjectId ? { _id: param } : { slug: param }
+    isObjectId ? { _id: param } : { slug: param },
   ).populate("creator", "name avatar bio");
 
   if (!course) return next(new AppError("Course not found.", 404));
@@ -190,16 +190,16 @@ export const getAdminCoursePreview = asyncHandler(async (req, res, next) => {
 
   // Give admin full signed video URLs for every lesson
   courseObj.sections = courseObj.sections.map((sec) => ({
-  ...sec,
-  lessons: sec.lessons.map((lesson) => ({
-    ...lesson,
-    video: {
-      public_id: lesson.video?.public_id || "",
-      duration: lesson.video?.duration || 0,
-      url: "",
-    },
-  })),
-}));
+    ...sec,
+    lessons: sec.lessons.map((lesson) => ({
+      ...lesson,
+      video: {
+        public_id: lesson.video?.public_id || "",
+        duration: lesson.video?.duration || 0,
+        url: "",
+      },
+    })),
+  }));
 
   res.status(200).json({ success: true, course: courseObj });
 });
@@ -261,7 +261,7 @@ export const createCourse = asyncHandler(async (req, res, next) => {
   });
 
   course.sections.push({ title: "Final Quiz", order: 0, lessons: [] });
-await course.save();
+  await course.save();
 
   res.status(201).json({ success: true, message: "Course created.", course });
 });
@@ -292,16 +292,25 @@ export const updateCourse = asyncHandler(async (req, res, next) => {
   }
 
   const fields = [
-    "title", "description", "shortDescription", "category",
-    "language", "level", "price", "discountPrice", "isFree",
+    "title",
+    "description",
+    "shortDescription",
+    "category",
+    "language",
+    "level",
+    "price",
+    "discountPrice",
+    "isFree",
   ];
   fields.forEach((f) => {
     if (req.body[f] !== undefined) course[f] = req.body[f];
   });
 
   if (req.body.tags) course.tags = JSON.parse(req.body.tags);
-  if (req.body.requirements) course.requirements = JSON.parse(req.body.requirements);
-  if (req.body.whatYouLearn) course.whatYouLearn = JSON.parse(req.body.whatYouLearn);
+  if (req.body.requirements)
+    course.requirements = JSON.parse(req.body.requirements);
+  if (req.body.whatYouLearn)
+    course.whatYouLearn = JSON.parse(req.body.whatYouLearn);
 
   if (req.file) {
     if (course.thumbnail?.public_id) {
@@ -330,21 +339,29 @@ export const deleteCourse = asyncHandler(async (req, res, next) => {
 
   const destroyPromises = [];
   if (course.thumbnail.public_id)
-    destroyPromises.push(cloudinary.uploader.destroy(course.thumbnail.public_id));
+    destroyPromises.push(
+      cloudinary.uploader.destroy(course.thumbnail.public_id),
+    );
   if (course.previewVideo.public_id)
     destroyPromises.push(
-      cloudinary.uploader.destroy(course.previewVideo.public_id, { resource_type: "video" }),
+      cloudinary.uploader.destroy(course.previewVideo.public_id, {
+        resource_type: "video",
+      }),
     );
   course.sections.forEach((sec) => {
     sec.lessons.forEach((lesson) => {
       if (lesson.video?.public_id)
         destroyPromises.push(
-          cloudinary.uploader.destroy(lesson.video.public_id, { resource_type: "video" }),
+          cloudinary.uploader.destroy(lesson.video.public_id, {
+            resource_type: "video",
+          }),
         );
       lesson.notes.forEach((note) => {
         if (note.public_id)
           destroyPromises.push(
-            cloudinary.uploader.destroy(note.public_id, { resource_type: "raw" }),
+            cloudinary.uploader.destroy(note.public_id, {
+              resource_type: "raw",
+            }),
           );
       });
     });
@@ -368,23 +385,37 @@ export const togglePublish = asyncHandler(async (req, res, next) => {
 
   const hasContent = course.sections.some((s) => s.lessons.length > 0);
   if (!course.isPublished && !hasContent) {
-    return next(new AppError("Add at least one lesson before publishing.", 400));
+    return next(
+      new AppError("Add at least one lesson before publishing.", 400),
+    );
   }
   const FINAL_SECTION_PATTERN = /final\s*(quiz|assessment|exam|test)/i;
 
-// Only validate when publishing (not unpublishing)
-if (!course.isPublished) {
-  const finalSection = course.sections.find(s => FINAL_SECTION_PATTERN.test(s.title));
+  // Only validate when publishing (not unpublishing)
+  if (!course.isPublished) {
+    const finalSection = course.sections.find((s) =>
+      FINAL_SECTION_PATTERN.test(s.title),
+    );
 
-  if (!finalSection) {
-    return next(new AppError("A 'Final Quiz' section is required before publishing.", 400));
-  }
+    if (!finalSection) {
+      return next(
+        new AppError(
+          "A 'Final Quiz' section is required before publishing.",
+          400,
+        ),
+      );
+    }
 
-  const hasQuizLesson = finalSection.lessons.some(l => l.quiz);
-  if (!hasQuizLesson) {
-    return next(new AppError("The Final Quiz section must have at least one lesson with a quiz attached before publishing.", 400));
+    const hasQuizLesson = finalSection.lessons.some((l) => l.quiz);
+    if (!hasQuizLesson) {
+      return next(
+        new AppError(
+          "The Final Quiz section must have at least one lesson with a quiz attached before publishing.",
+          400,
+        ),
+      );
+    }
   }
-}
 
   course.isPublished = !course.isPublished;
   if (course.isPublished) {
@@ -469,24 +500,25 @@ export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
   }
 
   const timestamp = Date.now();
-const signedUrl = cloudinary.url(lesson.video.public_id, {
-  resource_type: "video",
-  type: "authenticated",
-  secure: true,
-  sign_url: true,
-  streaming_profile: "full_hd",
-  format: "m3u8",
-  expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
-});
+  const signedUrl = cloudinary.url(lesson.video.public_id, {
+    resource_type: "video",
+    type: "authenticated",
+    secure: true,
+    sign_url: true,
+    streaming_profile: "full_hd",
+    format: "m3u8",
+    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
+  });
 
-// DON'T append anything to the signed URL — just send it as-is
-res.set({
-  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
-  "Pragma": "no-cache",
-  "Expires": "0",
-});
+  // DON'T append anything to the signed URL — just send it as-is
+  res.set({
+    "Cache-Control":
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
+  });
 
-res.json({ success: true, url: signedUrl, expiresIn: 7200 });
+  res.json({ success: true, url: signedUrl, expiresIn: 7200 });
 });
 export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   const { courseId, sectionId, lessonId } = req.params;
@@ -529,7 +561,11 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   const cloudinaryRes = await fetch(signedUrl);
 
   if (!cloudinaryRes.ok) {
-    console.error("Cloudinary manifest fetch failed:", cloudinaryRes.status, await cloudinaryRes.text());
+    console.error(
+      "Cloudinary manifest fetch failed:",
+      cloudinaryRes.status,
+      await cloudinaryRes.text(),
+    );
     return next(new AppError("Failed to fetch video stream.", 502));
   }
 
@@ -540,37 +576,48 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
 
   // Get base URL for resolving relative segment URLs
   const urlObj = new URL(signedUrl);
-  const basePath = urlObj.origin + urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
+  const basePath =
+    urlObj.origin +
+    urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
   const baseQuery = urlObj.search; // preserve the signature query params
 
   // Rewrite every non-comment line (segments, sub-playlists)
-  const rewritten = manifest.split("\n").map((line) => {
-    const trimmed = line.trim();
+  const rewritten = manifest
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return line;
 
-    // Skip comments and empty lines
-    if (!trimmed || trimmed.startsWith("#")) return line;
+      // Build absolute Cloudinary URL
+      let absoluteUrl;
+      if (trimmed.startsWith("http")) {
+        absoluteUrl = trimmed; // already absolute, use as-is
+      } else {
+        // relative — resolve against base, but don't double-append query
+        absoluteUrl = basePath + trimmed;
+        if (baseQuery && !trimmed.includes("?")) {
+          absoluteUrl += baseQuery;
+        }
+      }
 
-    // Build absolute Cloudinary URL
-    const absoluteUrl = trimmed.startsWith("http")
-      ? trimmed
-      : basePath + trimmed + (baseQuery && !trimmed.includes("?") ? baseQuery : "");
-
-    const encoded = encodeURIComponent(absoluteUrl);
-    return `/api/courses/proxy-segment?url=${encoded}`;
-  }).join("\n");
+      const encoded = encodeURIComponent(absoluteUrl);
+      return `/api/courses/proxy-segment?url=${encoded}`;
+    })
+    .join("\n");
 
   console.log("Rewritten manifest:\n", rewritten);
 
   res.set({
-  "Content-Type": "application/vnd.apple.mpegurl",
-  "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
-  "Pragma": "no-cache",
-  "Expires": "0",
-  "ETag": `"${Date.now()}"`, // unique every request
-  "Last-Modified": new Date().toUTCString(),
-  "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
-  "Access-Control-Allow-Credentials": "true",
-});
+    "Content-Type": "application/vnd.apple.mpegurl",
+    "Cache-Control":
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
+    ETag: `"${Date.now()}"`, // unique every request
+    "Last-Modified": new Date().toUTCString(),
+    "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
+    "Access-Control-Allow-Credentials": "true",
+  });
 
   res.send(rewritten);
 });
@@ -591,8 +638,8 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
   res.set({
     "Content-Type": "video/mp2t",
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    "Pragma": "no-cache",
-    "Expires": "0",
+    Pragma: "no-cache",
+    Expires: "0",
   });
 
   segmentRes.body.pipe(res);
