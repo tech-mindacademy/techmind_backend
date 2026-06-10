@@ -582,28 +582,38 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   const baseQuery = urlObj.search; // preserve the signature query params
 
   // Rewrite every non-comment line (segments, sub-playlists)
-  const rewritten = manifest
-    .split("\n")
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) return line;
+  // Rewrite every non-comment line (segments, sub-playlists)
+const rewritten = manifest
+  .split("\n")
+  .map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return line;
 
-      // Build absolute Cloudinary URL
-      let absoluteUrl;
-      if (trimmed.startsWith("http")) {
-        absoluteUrl = trimmed; // already absolute, use as-is
-      } else {
-        // relative — resolve against base, but don't double-append query
-        absoluteUrl = basePath + trimmed;
-        if (baseQuery && !trimmed.includes("?")) {
-          absoluteUrl += baseQuery;
-        }
+    let absoluteUrl;
+    if (trimmed.startsWith("http")) {
+      // Already absolute — use as-is, but append signature if missing
+      absoluteUrl = trimmed;
+      if (baseQuery && !trimmed.includes("?") && !trimmed.includes("s--")) {
+        absoluteUrl += baseQuery;
       }
+    } else if (trimmed.startsWith("/")) {
+      // Root-relative path — resolve against origin only, not basePath
+      absoluteUrl = urlObj.origin + trimmed;
+      if (baseQuery && !trimmed.includes("?")) {
+        absoluteUrl += baseQuery;
+      }
+    } else {
+      // Relative path — resolve against basePath
+      absoluteUrl = basePath + trimmed;
+      if (baseQuery && !trimmed.includes("?")) {
+        absoluteUrl += baseQuery;
+      }
+    }
 
-      const encoded = encodeURIComponent(absoluteUrl);
-      return `/api/courses/proxy-segment?url=${encoded}`;
-    })
-    .join("\n");
+    const encoded = encodeURIComponent(absoluteUrl);
+    return `/api/courses/proxy-segment?url=${encoded}`;
+  })
+  .join("\n");
 
   console.log("Rewritten manifest:\n", rewritten);
 
@@ -627,14 +637,59 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
   const { url } = req.query;
   if (!url) return next(new AppError("No URL provided.", 400));
 
-  // req.user is already set by protect middleware — no token needed
   const segmentUrl = decodeURIComponent(url);
 
   const segmentRes = await fetch(segmentUrl);
   if (!segmentRes.ok) {
+    console.error("Segment fetch failed:", segmentRes.status, segmentUrl);
     return next(new AppError("Failed to fetch segment.", 502));
   }
 
+  const contentType = segmentRes.headers.get("content-type") || "";
+
+  // Sub-playlist m3u8 — rewrite its lines too before forwarding
+  if (
+    contentType.includes("mpegurl") ||
+    contentType.includes("x-mpegURL") ||
+    segmentUrl.includes(".m3u8")
+  ) {
+    const text = await segmentRes.text();
+
+    const urlObj = new URL(segmentUrl);
+    const basePath =
+      urlObj.origin +
+      urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
+    const baseQuery = urlObj.search;
+
+    const rewritten = text
+      .split("\n")
+      .map((line) => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) return line;
+
+        let absoluteUrl;
+        if (trimmed.startsWith("http")) {
+          absoluteUrl = trimmed;
+        } else if (trimmed.startsWith("/")) {
+          absoluteUrl = urlObj.origin + trimmed;
+          if (baseQuery && !trimmed.includes("?")) absoluteUrl += baseQuery;
+        } else {
+          absoluteUrl = basePath + trimmed;
+          if (baseQuery && !trimmed.includes("?")) absoluteUrl += baseQuery;
+        }
+
+        return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}`;
+      })
+      .join("\n");
+
+    res.set({
+      "Content-Type": "application/vnd.apple.mpegurl",
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    });
+    return res.send(rewritten);
+  }
+
+  // Regular .ts segment — pipe through
   res.set({
     "Content-Type": "video/mp2t",
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
