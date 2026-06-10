@@ -33,7 +33,11 @@ connectDB();
 const app = express();
 app.set("trust proxy", 1);
 
-app.use(helmet());
+app.use(helmet({
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(cors({
   origin: [
     process.env.CLIENT_URL,
