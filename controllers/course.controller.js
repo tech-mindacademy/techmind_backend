@@ -477,5 +477,10 @@ export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
     expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
   });
 
+  // ← Add these headers to prevent caching
+  res.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+  res.set("Pragma", "no-cache");
+  res.set("Expires", "0");
+
   res.json({ success: true, url: signedUrl, expiresIn: 7200 });
 });
