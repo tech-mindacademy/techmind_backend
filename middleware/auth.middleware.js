@@ -10,24 +10,31 @@ export const protect = async (req, res, next) => {
   try {
     // 1. Get token from Authorization header
     let token;
-const authHeader = req.headers.authorization;
-if (authHeader && authHeader.startsWith("Bearer ")) {
-  token = authHeader.split(" ")[1];
-} else if (req.cookies?.token) {
-  token = req.cookies.token;
-}
+    let isRefreshToken = false;
+    const authHeader = req.headers.authorization;
 
-if (!token) {
-  return res.status(401).json({
-    success: false,
-    message: "Not authorized. No token provided.",
-  });
-}
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.split(" ")[1];
+    } else if (req.cookies?.token) {
+      token = req.cookies.token;
+    } else if (req.cookies?.refreshToken) {
+      token = req.cookies.refreshToken;
+      isRefreshToken = true;
+    }
 
-    // 2. Verify token
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: "Not authorized. No token provided.",
+      });
+    }
+
     let decoded;
     try {
-      decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+      const secret = isRefreshToken
+        ? process.env.JWT_REFRESH_SECRET
+        : process.env.JWT_ACCESS_SECRET;
+      decoded = jwt.verify(token, secret);
     } catch (err) {
       if (err.name === "TokenExpiredError") {
         return res.status(401).json({
