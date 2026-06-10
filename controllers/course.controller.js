@@ -4,6 +4,7 @@ import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { cloudinary } from "../config/cloudinary.js";
 import streamifier from "streamifier";
 import fetch from "node-fetch";
+import jwt from "jsonwebtoken";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC ENDPOINTS
