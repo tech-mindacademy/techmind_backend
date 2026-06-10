@@ -522,13 +522,15 @@ export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
 });
 export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   const { courseId, sectionId, lessonId } = req.params;
-
+ 
+  // ── 1. Load course ──────────────────────────────────────────────────────────
   const course = await Course.findById(courseId);
   if (!course) return next(new AppError("Course not found.", 404));
-
+ 
+  // ── 2. Authorisation check ──────────────────────────────────────────────────
   const isOwner = course.creator.toString() === req.user._id.toString();
   const isAdmin = req.user.role === "admin";
-
+ 
   if (!isOwner && !isAdmin) {
     const enrollment = await Enrollment.findOne({
       student: req.user._id,
@@ -536,17 +538,19 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
     });
     if (!enrollment) return next(new AppError("Not enrolled.", 403));
   }
-
+ 
+  // ── 3. Locate section / lesson ──────────────────────────────────────────────
   const section = course.sections.id(sectionId);
   if (!section) return next(new AppError("Section not found.", 404));
-
+ 
   const lesson = section.lessons.id(lessonId);
   if (!lesson) return next(new AppError("Lesson not found.", 404));
-
+ 
   if (!lesson.video?.public_id) {
     return next(new AppError("No video for this lesson.", 404));
   }
-
+ 
+  // ── 4. Build Cloudinary signed HLS manifest URL ─────────────────────────────
   const signedUrl = cloudinary.url(lesson.video.public_id, {
     resource_type: "video",
     type: "authenticated",
@@ -554,12 +558,11 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
     sign_url: true,
     streaming_profile: "full_hd",
     format: "m3u8",
-    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
+    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2, // 2 hours
   });
-
-  // Fetch the m3u8 manifest from Cloudinary
+ 
+  // ── 5. Fetch manifest from Cloudinary ───────────────────────────────────────
   const cloudinaryRes = await fetch(signedUrl);
-
   if (!cloudinaryRes.ok) {
     console.error(
       "Cloudinary manifest fetch failed:",
@@ -568,105 +571,121 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
     );
     return next(new AppError("Failed to fetch video stream.", 502));
   }
-
+ 
   const manifest = await cloudinaryRes.text();
-
-  // Log manifest to debug
-  console.log("Original manifest:\n", manifest);
-
-  // Get base URL for resolving relative segment URLs
+ 
+  // ── 6. Generate a short-lived segment token (2h) ────────────────────────────
+  // This token is embedded in every segment URL so HLS.js doesn't need
+  // cookies — works across all devices and browsers.
+  const segmentToken = jwt.sign(
+    {
+      courseId,
+      userId: req.user._id.toString(),
+      lessonId,
+    },
+    process.env.JWT_SECRET,
+    { expiresIn: "2h" },
+  );
+ 
+  // ── 7. Rewrite manifest lines to go through our proxy ──────────────────────
   const urlObj = new URL(signedUrl);
   const basePath =
     urlObj.origin +
     urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
-  const baseQuery = urlObj.search; // preserve the signature query params
-
-  // Rewrite every non-comment line (segments, sub-playlists)
-  // Rewrite every non-comment line (segments, sub-playlists)
-const rewritten = manifest
-  .split("\n")
-  .map((line) => {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) return line;
-
-    let absoluteUrl;
-    if (trimmed.startsWith("http")) {
-      // Already absolute — use as-is, but append signature if missing
-      absoluteUrl = trimmed;
-      if (baseQuery && !trimmed.includes("?") && !trimmed.includes("s--")) {
-        absoluteUrl += baseQuery;
+  const baseQuery = urlObj.search; // Cloudinary signature params
+ 
+  const rewritten = manifest
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) return line; // keep HLS tags as-is
+ 
+      let absoluteUrl;
+      if (trimmed.startsWith("http")) {
+        absoluteUrl = trimmed;
+        // Append Cloudinary signature if not already present
+        if (baseQuery && !trimmed.includes("s--")) {
+          absoluteUrl += baseQuery;
+        }
+      } else if (trimmed.startsWith("/")) {
+        absoluteUrl = urlObj.origin + trimmed;
+        if (baseQuery && !trimmed.includes("?")) absoluteUrl += baseQuery;
+      } else {
+        absoluteUrl = basePath + trimmed;
+        if (baseQuery && !trimmed.includes("?")) absoluteUrl += baseQuery;
       }
-    } else if (trimmed.startsWith("/")) {
-      // Root-relative path — resolve against origin only, not basePath
-      absoluteUrl = urlObj.origin + trimmed;
-      if (baseQuery && !trimmed.includes("?")) {
-        absoluteUrl += baseQuery;
-      }
-    } else {
-      // Relative path — resolve against basePath
-      absoluteUrl = basePath + trimmed;
-      if (baseQuery && !trimmed.includes("?")) {
-        absoluteUrl += baseQuery;
-      }
-    }
-
-    const encoded = encodeURIComponent(absoluteUrl);
-    return `/api/courses/proxy-segment?url=${encoded}`;
-  })
-  .join("\n");
-
-  console.log("Rewritten manifest:\n", rewritten);
-
+ 
+      // Route every segment through our proxy with the JWT token
+      const encoded = encodeURIComponent(absoluteUrl);
+      return `/api/courses/proxy-segment?url=${encoded}&t=${segmentToken}`;
+    })
+    .join("\n");
+ 
+  // ── 8. Send rewritten manifest ──────────────────────────────────────────────
   res.set({
     "Content-Type": "application/vnd.apple.mpegurl",
-    "Cache-Control":
-      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
-    ETag: `"${Date.now()}"`, // unique every request
+    ETag: `"${Date.now()}"`,
     "Last-Modified": new Date().toUTCString(),
     "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
     "Access-Control-Allow-Credentials": "true",
   });
-
+ 
   res.send(rewritten);
 });
-
-// Proxy individual .ts segments
+ 
+// ─────────────────────────────────────────────────────────────────────────────
+// PROXY SEGMENT
+// @route  GET /api/courses/proxy-segment?url=...&t=...
+// @access Token-verified (no cookie needed — works on all devices)
+// ─────────────────────────────────────────────────────────────────────────────
 export const proxySegment = asyncHandler(async (req, res, next) => {
-  const { url } = req.query;
+  const { url, t } = req.query;
+ 
   if (!url) return next(new AppError("No URL provided.", 400));
-
+ 
+  // ── 1. Verify segment token ─────────────────────────────────────────────────
+  if (!t) return next(new AppError("No segment token provided.", 401));
+ 
+  try {
+    jwt.verify(t, process.env.JWT_SECRET);
+  } catch (err) {
+    return next(new AppError("Invalid or expired segment token.", 401));
+  }
+ 
+  // ── 2. Fetch the segment from Cloudinary ────────────────────────────────────
   const segmentUrl = decodeURIComponent(url);
-
+ 
   const segmentRes = await fetch(segmentUrl);
   if (!segmentRes.ok) {
     console.error("Segment fetch failed:", segmentRes.status, segmentUrl);
     return next(new AppError("Failed to fetch segment.", 502));
   }
-
+ 
   const contentType = segmentRes.headers.get("content-type") || "";
-
-  // Sub-playlist m3u8 — rewrite its lines too before forwarding
+ 
+  // ── 3a. Sub-playlist (.m3u8) — rewrite its lines too ───────────────────────
   if (
     contentType.includes("mpegurl") ||
     contentType.includes("x-mpegURL") ||
     segmentUrl.includes(".m3u8")
   ) {
     const text = await segmentRes.text();
-
+ 
     const urlObj = new URL(segmentUrl);
     const basePath =
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
     const baseQuery = urlObj.search;
-
+ 
     const rewritten = text
       .split("\n")
       .map((line) => {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) return line;
-
+ 
         let absoluteUrl;
         if (trimmed.startsWith("http")) {
           absoluteUrl = trimmed;
@@ -677,25 +696,28 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
           absoluteUrl = basePath + trimmed;
           if (baseQuery && !trimmed.includes("?")) absoluteUrl += baseQuery;
         }
-
-        return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}`;
+ 
+        // Keep the same token flowing through sub-playlists
+        return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}&t=${t}`;
       })
       .join("\n");
-
+ 
     res.set({
       "Content-Type": "application/vnd.apple.mpegurl",
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      Pragma: "no-cache",
+      Expires: "0",
     });
     return res.send(rewritten);
   }
-
-  // Regular .ts segment — pipe through
+ 
+  // ── 3b. Regular .ts video segment — pipe straight through ──────────────────
   res.set({
     "Content-Type": "video/mp2t",
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
   });
-
+ 
   segmentRes.body.pipe(res);
 });
