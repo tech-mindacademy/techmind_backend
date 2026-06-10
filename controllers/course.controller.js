@@ -467,7 +467,8 @@ export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
     return next(new AppError("No video for this lesson.", 404));
   }
 
-  const signedUrl = cloudinary.url(lesson.video.public_id, {
+  const timestamp = Date.now();
+const signedUrl = cloudinary.url(lesson.video.public_id, {
   resource_type: "video",
   type: "authenticated",
   secure: true,
@@ -477,14 +478,12 @@ export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
   expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
 });
 
-// Append cache buster so browser never serves from HTTP cache
-const bustUrl = `${signedUrl}&_cb=${Date.now()}`;
-
+// DON'T append anything to the signed URL — just send it as-is
 res.set({
   "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
   "Pragma": "no-cache",
   "Expires": "0",
 });
 
-res.json({ success: true, url: bustUrl, expiresIn: 7200 });
+res.json({ success: true, url: signedUrl, expiresIn: 7200 });
 });
