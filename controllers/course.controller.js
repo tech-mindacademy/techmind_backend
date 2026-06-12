@@ -475,7 +475,7 @@ export const getCategories = asyncHandler(async (req, res) => {
 // @access Enrolled student | Creator | Admin
 export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
   const { courseId, sectionId, lessonId } = req.params;
-
+  console.log(`[proxy] ${req.user?._id} → course=${courseId} lesson=${lessonId}`);
   const course = await Course.findById(courseId);
   if (!course) return next(new AppError("Course not found.", 404));
 
