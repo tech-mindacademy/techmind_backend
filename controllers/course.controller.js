@@ -94,7 +94,10 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
     }
   }
 
-  const course = await Course.findOne(query).populate("creator", "name avatar bio");
+  const course = await Course.findOne(query).populate(
+    "creator",
+    "name avatar bio",
+  );
   if (!course) return next(new AppError("Course not found.", 404));
 
   let isEnrolled = false;
@@ -170,7 +173,7 @@ export const getAdminCoursePreview = asyncHandler(async (req, res, next) => {
   const isObjectId = /^[a-f\d]{24}$/i.test(param);
 
   const course = await Course.findOne(
-    isObjectId ? { _id: param } : { slug: param }
+    isObjectId ? { _id: param } : { slug: param },
   ).populate("creator", "name avatar bio");
 
   if (!course) return next(new AppError("Course not found.", 404));
@@ -200,7 +203,7 @@ export const getAdminCoursePreview = asyncHandler(async (req, res, next) => {
 export const getMyCoursesAsCreator = asyncHandler(async (req, res) => {
   const courses = await Course.find({ creator: req.user._id })
     .select(
-      "title slug thumbnail isPublished stats.totalStudents stats.avgRating price createdAt"
+      "title slug thumbnail isPublished stats.totalStudents stats.avgRating price createdAt",
     )
     .sort({ createdAt: -1 });
 
@@ -279,16 +282,25 @@ export const updateCourse = asyncHandler(async (req, res, next) => {
   }
 
   const fields = [
-    "title", "description", "shortDescription", "category",
-    "language", "level", "price", "discountPrice", "isFree",
+    "title",
+    "description",
+    "shortDescription",
+    "category",
+    "language",
+    "level",
+    "price",
+    "discountPrice",
+    "isFree",
   ];
   fields.forEach((f) => {
     if (req.body[f] !== undefined) course[f] = req.body[f];
   });
 
   if (req.body.tags) course.tags = JSON.parse(req.body.tags);
-  if (req.body.requirements) course.requirements = JSON.parse(req.body.requirements);
-  if (req.body.whatYouLearn) course.whatYouLearn = JSON.parse(req.body.whatYouLearn);
+  if (req.body.requirements)
+    course.requirements = JSON.parse(req.body.requirements);
+  if (req.body.whatYouLearn)
+    course.whatYouLearn = JSON.parse(req.body.whatYouLearn);
 
   if (req.file) {
     if (course.thumbnail?.public_id) {
@@ -317,21 +329,29 @@ export const deleteCourse = asyncHandler(async (req, res, next) => {
 
   const destroyPromises = [];
   if (course.thumbnail.public_id)
-    destroyPromises.push(cloudinary.uploader.destroy(course.thumbnail.public_id));
+    destroyPromises.push(
+      cloudinary.uploader.destroy(course.thumbnail.public_id),
+    );
   if (course.previewVideo.public_id)
     destroyPromises.push(
-      cloudinary.uploader.destroy(course.previewVideo.public_id, { resource_type: "video" })
+      cloudinary.uploader.destroy(course.previewVideo.public_id, {
+        resource_type: "video",
+      }),
     );
   course.sections.forEach((sec) => {
     sec.lessons.forEach((lesson) => {
       if (lesson.video?.public_id)
         destroyPromises.push(
-          cloudinary.uploader.destroy(lesson.video.public_id, { resource_type: "video" })
+          cloudinary.uploader.destroy(lesson.video.public_id, {
+            resource_type: "video",
+          }),
         );
       lesson.notes.forEach((note) => {
         if (note.public_id)
           destroyPromises.push(
-            cloudinary.uploader.destroy(note.public_id, { resource_type: "raw" })
+            cloudinary.uploader.destroy(note.public_id, {
+              resource_type: "raw",
+            }),
           );
       });
     });
@@ -355,25 +375,32 @@ export const togglePublish = asyncHandler(async (req, res, next) => {
 
   const hasContent = course.sections.some((s) => s.lessons.length > 0);
   if (!course.isPublished && !hasContent) {
-    return next(new AppError("Add at least one lesson before publishing.", 400));
+    return next(
+      new AppError("Add at least one lesson before publishing.", 400),
+    );
   }
 
   const FINAL_SECTION_PATTERN = /final\s*(quiz|assessment|exam|test)/i;
 
   if (!course.isPublished) {
     const finalSection = course.sections.find((s) =>
-      FINAL_SECTION_PATTERN.test(s.title)
+      FINAL_SECTION_PATTERN.test(s.title),
     );
     if (!finalSection) {
-      return next(new AppError("A 'Final Quiz' section is required before publishing.", 400));
+      return next(
+        new AppError(
+          "A 'Final Quiz' section is required before publishing.",
+          400,
+        ),
+      );
     }
     const hasQuizLesson = finalSection.lessons.some((l) => l.quiz);
     if (!hasQuizLesson) {
       return next(
         new AppError(
           "The Final Quiz section must have at least one lesson with a quiz attached before publishing.",
-          400
-        )
+          400,
+        ),
       );
     }
   }
@@ -478,7 +505,8 @@ export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
   });
 
   res.set({
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+    "Cache-Control":
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
   });
@@ -543,7 +571,10 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   });
 
   if (!signedUrl || !signedUrl.startsWith("http")) {
-    console.error("[proxyLessonVideo] Cloudinary returned invalid URL:", signedUrl);
+    console.error(
+      "[proxyLessonVideo] Cloudinary returned invalid URL:",
+      signedUrl,
+    );
     return next(new AppError("Video URL generation failed.", 500));
   }
 
@@ -555,7 +586,7 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
     console.error(
       "[proxyLessonVideo] Cloudinary fetch failed:",
       cloudinaryRes.status,
-      await cloudinaryRes.text()
+      await cloudinaryRes.text(),
     );
     return next(new AppError("Failed to fetch video stream.", 502));
   }
@@ -595,7 +626,8 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   // ── 8. Send rewritten manifest ──────────────────────────────────────────────
   res.set({
     "Content-Type": "application/vnd.apple.mpegurl",
-    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+    "Cache-Control":
+      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
     ETag: `"${Date.now()}"`,
@@ -639,7 +671,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     console.error(
       "[proxySegment] fetch failed:",
       segmentRes.status,
-      segmentUrl.slice(0, 120)
+      segmentUrl.slice(0, 120),
     );
     return next(new AppError("Failed to fetch segment.", 502));
   }
@@ -651,16 +683,21 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     segmentUrl.includes(".m3u8");
 
   // ── Sub-playlist (.m3u8) — rewrite its segment lines too ───────────────────
+  // ── Sub-playlist (.m3u8) — rewrite its segment lines too ───────────────────
   if (isPlaylist) {
     const text = await segmentRes.text();
     console.log("[proxySegment] sub-playlist raw:\n", text.slice(0, 600));
 
     const urlObj = new URL(segmentUrl);
-    // basePath = origin + path up to last slash, NO query string
-    // Cloudinary .ts filenames are relative to the sub-playlist's directory
     const basePath =
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
+
+    // Detect byterange playlist — if it is one, .ts files are served publicly
+    // by Cloudinary without a signature, so we can expose the absolute URL
+    // directly. Proxying byterange segments breaks HLS.js because both entries
+    // share the same .ts filename → same proxy URL → deduplication bug.
+    const isByteRange = text.includes("#EXT-X-BYTERANGE");
 
     const rewritten = text
       .split("\n")
@@ -668,19 +705,24 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) return line;
 
+        // Resolve to absolute Cloudinary URL
         let absoluteUrl;
         if (trimmed.startsWith("http")) {
-          // Already absolute
           absoluteUrl = trimmed;
         } else if (trimmed.startsWith("/")) {
           absoluteUrl = urlObj.origin + trimmed;
         } else {
-          // Relative filename like "hrqh5mfd9szzmpg8otoh.ts"
-          // Resolve against basePath only — do NOT append query/signature params,
-          // the .ts file is served publicly by Cloudinary without a signature
           absoluteUrl = basePath + trimmed;
         }
 
+        // For byterange playlists: expose the direct Cloudinary URL so
+        // HLS.js sends Range-header requests straight to Cloudinary.
+        // The .ts file is public (no signature required).
+        if (isByteRange) {
+          return absoluteUrl;
+        }
+
+        // Normal (non-byterange) segments: keep proxying as before
         return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}`;
       })
       .join("\n");
