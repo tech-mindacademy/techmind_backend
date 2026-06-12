@@ -563,7 +563,7 @@ const signedUrl = cloudinary.url(lesson.video.public_id, {
   type: "authenticated",
   secure: true,
   sign_url: true,
-  streaming_profile: "full_hd",
+  streaming_profile: "hd",        // ← more compatible, fewer broken variants
   format: "m3u8",
   expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
 });
