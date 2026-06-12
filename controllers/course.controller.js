@@ -552,15 +552,29 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   }
  
   // ── 4. Build Cloudinary signed HLS manifest URL ─────────────────────────────
-  const signedUrl = cloudinary.url(lesson.video.public_id, {
-    resource_type: "video",
-    type: "authenticated",
-    secure: true,
-    sign_url: true,
-    streaming_profile: "full_hd",
-    format: "m3u8",
-    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2, // 2 hours
-  });
+  // ── 4. Build Cloudinary signed HLS manifest URL ─────────────────────────────
+if (!process.env.JWT_SECRET) {
+  console.error("FATAL: JWT_SECRET is not set");
+  return next(new AppError("Server configuration error.", 500));
+}
+
+const signedUrl = cloudinary.url(lesson.video.public_id, {
+  resource_type: "video",
+  type: "authenticated",
+  secure: true,
+  sign_url: true,
+  streaming_profile: "full_hd",
+  format: "m3u8",
+  expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
+});
+
+// ── Guard: cloudinary.url() returns empty/invalid string if creds are missing
+if (!signedUrl || !signedUrl.startsWith("http")) {
+  console.error("Cloudinary returned invalid URL:", signedUrl);
+  return next(new AppError("Video URL generation failed — check Cloudinary env vars.", 500));
+}
+
+console.log("proxyLessonVideo signedUrl:", signedUrl.slice(0, 80)); // safe to log
  
   // ── 5. Fetch manifest from Cloudinary ───────────────────────────────────────
   const cloudinaryRes = await fetch(signedUrl);
