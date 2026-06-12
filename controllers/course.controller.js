@@ -668,7 +668,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     console.error(
       "[proxySegment] fetch failed:",
       segmentRes.status,
-      segmentUrl.slice(0, 120)
+      segmentUrl.slice(0, 120),
     );
     return next(new AppError("Failed to fetch segment.", 502));
   }
@@ -689,47 +689,81 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
 
-    // Track byte offset so each proxied .ts URL is unique.
-    // HLS.js deduplicates segments by URL — if two byterange entries resolve
-    // to the same proxy URL it only fetches once and the video stalls.
+    // Parse lines into structured segments then re-emit in HLS.js-friendly order
+    const lines = text.split("\n");
+    const output = [];
+    let pendingExtinf = null;
+    let pendingByterange = null;
     let currentByteOffset = null;
 
-    const rewritten = text
-      .split("\n")
-      .map((line) => {
-        const trimmed = line.trim();
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
 
-        // Capture the byte start offset from #EXT-X-BYTERANGE so we can tag
-        // the next segment line with it, making each proxy URL unique.
-        if (trimmed.startsWith("#EXT-X-BYTERANGE:")) {
-          const match = trimmed.match(/#EXT-X-BYTERANGE:(\d+)@(\d+)/);
-          if (match) currentByteOffset = match[2];
-          return line; // keep the tag unchanged
+      if (!trimmed) {
+        output.push(line);
+        continue;
+      }
+
+      if (trimmed.startsWith("#EXTINF:")) {
+        pendingExtinf = line;
+        continue; // hold — emit after #EXT-X-BYTERANGE
+      }
+
+      if (trimmed.startsWith("#EXT-X-BYTERANGE:")) {
+        pendingByterange = line;
+        const match = trimmed.match(/#EXT-X-BYTERANGE:(\d+)@(\d+)/);
+        if (match) currentByteOffset = match[2];
+        continue; // hold — emit before segment URI
+      }
+
+      if (trimmed.startsWith("#")) {
+        // Flush any pending tags before other directives
+        if (pendingExtinf) {
+          output.push(pendingExtinf);
+          pendingExtinf = null;
         }
-
-        if (!trimmed || trimmed.startsWith("#")) return line;
-
-        // Resolve to absolute Cloudinary URL
-        let absoluteUrl;
-        if (trimmed.startsWith("http")) {
-          absoluteUrl = trimmed;
-        } else if (trimmed.startsWith("/")) {
-          absoluteUrl = urlObj.origin + trimmed;
-        } else {
-          // Relative filename e.g. "hrqh5mfd9szzmpg8otoh.ts"
-          absoluteUrl = basePath + trimmed;
+        if (pendingByterange) {
+          output.push(pendingByterange);
+          pendingByterange = null;
         }
+        output.push(line);
+        continue;
+      }
 
-        // Append _br so byterange entries for the same .ts file get distinct
-        // proxy URLs. The param is ignored when forwarding to Cloudinary —
-        // only the Range header matters for the actual byte slice.
-        const uniqueSuffix =
-          currentByteOffset !== null ? `&_br=${currentByteOffset}` : "";
-        currentByteOffset = null; // reset after use
+      // Segment URI line — resolve and rewrite
+      let absoluteUrl;
+      if (trimmed.startsWith("http")) {
+        absoluteUrl = trimmed;
+      } else if (trimmed.startsWith("/")) {
+        absoluteUrl = urlObj.origin + trimmed;
+      } else {
+        absoluteUrl = basePath + trimmed;
+      }
 
-        return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
-      })
-      .join("\n");
+      const uniqueSuffix =
+        currentByteOffset !== null ? `&_br=${currentByteOffset}` : "";
+      currentByteOffset = null;
+
+      const proxyLine = `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
+
+      // Emit in correct HLS order: #EXT-X-BYTERANGE → #EXTINF → URI
+      if (pendingByterange) {
+        output.push(pendingByterange);
+        pendingByterange = null;
+      }
+      if (pendingExtinf) {
+        output.push(pendingExtinf);
+        pendingExtinf = null;
+      }
+      output.push(proxyLine);
+    }
+
+    const rewritten = output.join("\n");
+    console.log(
+      "[proxySegment] rewritten sub-playlist:\n",
+      rewritten.slice(0, 800),
+    );
 
     res.set({
       "Content-Type": "application/vnd.apple.mpegurl",
