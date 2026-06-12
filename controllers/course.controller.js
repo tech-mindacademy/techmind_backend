@@ -650,6 +650,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   const segmentUrl = decodeURIComponent(url);
 
+  // Security: only proxy Cloudinary URLs — the signed URL is unguessable
   if (!segmentUrl.startsWith("https://res.cloudinary.com/")) {
     return next(new AppError("Invalid segment URL.", 400));
   }
@@ -660,26 +661,18 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
   }
 
   if (segmentUrl.includes("/authenticated/") || segmentUrl.includes("s--")) {
-    const credentials = Buffer.from(
-      `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`,
-    ).toString("base64");
-    fetchHeaders["Authorization"] = `Basic ${credentials}`;
+    if (process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
+      const credentials = Buffer.from(
+        `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`
+      ).toString("base64");
+      fetchHeaders["Authorization"] = `Basic ${credentials}`;
+    }
   }
 
   const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
 
-  console.log(
-    "[proxySegment] fetch status:",
-    segmentRes.status,
-    segmentUrl.slice(0, 120),
-  );
-
   if (!segmentRes.ok && segmentRes.status !== 206) {
-    console.error(
-      "[proxySegment] fetch failed:",
-      segmentRes.status,
-      segmentUrl.slice(0, 120),
-    );
+    console.error("[proxySegment] fetch failed:", segmentRes.status, segmentUrl.slice(0, 120));
     return next(new AppError("Failed to fetch segment.", 502));
   }
 
@@ -689,20 +682,13 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     contentType.includes("x-mpegURL") ||
     segmentUrl.includes(".m3u8");
 
-  // ── Sub-playlist (.m3u8) ────────────────────────────────────────────────────
   if (isPlaylist) {
     const text = await segmentRes.text();
-    console.log("[proxySegment] sub-playlist raw:\n", text.slice(0, 600));
 
     const urlObj = new URL(segmentUrl);
     const basePath =
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
-
-    // Use absolute backend URL so HLS.js resolves segment URLs correctly
-    // regardless of which URL it considers the "base" for relative paths.
-    const backendOrigin =
-      process.env.BACKEND_URL || "https://api.techmindacademy.in";
 
     const lines = text.split("\n");
     const output = [];
@@ -710,18 +696,13 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     let pendingByterange = null;
     let currentByteOffset = null;
 
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
+    for (const line of lines) {
       const trimmed = line.trim();
 
-      if (!trimmed) {
-        output.push(line);
-        continue;
-      }
+      if (!trimmed) { output.push(line); continue; }
 
       if (trimmed.startsWith("#EXTINF:")) {
-        pendingExtinf = line;
-        continue;
+        pendingExtinf = line; continue;
       }
 
       if (trimmed.startsWith("#EXT-X-BYTERANGE:")) {
@@ -732,85 +713,48 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
       }
 
       if (trimmed.startsWith("#")) {
-        if (pendingExtinf) {
-          output.push(pendingExtinf);
-          pendingExtinf = null;
-        }
-        if (pendingByterange) {
-          output.push(pendingByterange);
-          pendingByterange = null;
-        }
+        if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
+        if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
         output.push(line);
         continue;
       }
 
-      // Segment URI
       let absoluteUrl;
-      if (trimmed.startsWith("http")) {
-        absoluteUrl = trimmed;
-      } else if (trimmed.startsWith("/")) {
-        absoluteUrl = urlObj.origin + trimmed;
-      } else {
-        absoluteUrl = basePath + trimmed;
-      }
+      if (trimmed.startsWith("http"))      absoluteUrl = trimmed;
+      else if (trimmed.startsWith("/"))    absoluteUrl = urlObj.origin + trimmed;
+      else                                 absoluteUrl = basePath + trimmed;
 
-      const uniqueSuffix =
-        currentByteOffset !== null ? `&_br=${currentByteOffset}` : "";
+      const uniqueSuffix = currentByteOffset !== null ? `&_br=${currentByteOffset}` : "";
       currentByteOffset = null;
 
-      // Absolute URL so HLS.js never misresolves relative paths
-      const proxyLine = `${backendOrigin}/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
+      const proxyLine = `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
 
-      if (pendingByterange) {
-        output.push(pendingByterange);
-        pendingByterange = null;
-      }
-      if (pendingExtinf) {
-        output.push(pendingExtinf);
-        pendingExtinf = null;
-      }
+      if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
+      if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
       output.push(proxyLine);
     }
-
-    const rewritten = output.join("\n");
-    console.log(
-      "[proxySegment] rewritten sub-playlist:\n",
-      rewritten.slice(0, 800),
-    );
 
     res.set({
       "Content-Type": "application/vnd.apple.mpegurl",
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       Pragma: "no-cache",
       Expires: "0",
-      "Access-Control-Allow-Origin": process.env.CLIENT_URL,
-      "Access-Control-Allow-Credentials": "true",
-      "Access-Control-Expose-Headers":
-        "Content-Range, Content-Length, Accept-Ranges",
     });
-    return res.send(rewritten);
+    return res.send(output.join("\n"));
   }
 
-  // ── Binary .ts segment ──────────────────────────────────────────────────────
-  // ── Binary .ts segment ──────────────────────────────────────────────────────
-  // ── Binary .ts segment ──────────────────────────────────────────────────────
+  // Binary .ts segment
   const responseHeaders = {
     "Content-Type": "video/mp2t",
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
-    "Access-Control-Allow-Origin": process.env.CLIENT_URL,
-    "Access-Control-Allow-Credentials": "true",
-    "Access-Control-Allow-Methods": "GET, OPTIONS",
-    "Access-Control-Allow-Headers": "Range, Content-Type",
-    "Access-Control-Expose-Headers":
-      "Content-Range, Content-Length, Accept-Ranges",
   };
 
   const forwardHeaders = ["content-length", "content-range", "accept-ranges"];
   for (const h of forwardHeaders) {
     const val = segmentRes.headers.get(h);
-    if (val) responseHeaders[h.toLowerCase()] = val;
+    if (val) responseHeaders[h] = val;
   }
 
   res.status(segmentRes.status).set(responseHeaders);
