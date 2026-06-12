@@ -647,27 +647,22 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   const segmentUrl = decodeURIComponent(url);
 
-  // Security: only proxy Cloudinary URLs — the signed URL is unguessable
   if (!segmentUrl.startsWith("https://res.cloudinary.com/")) {
     return next(new AppError("Invalid segment URL.", 400));
   }
 
-  // Binary .ts segment — replace your current fetch section
-const fetchHeaders = {};
+  // Build fetch headers — forward Range if present, fallback to _br param
+  const fetchHeaders = {};
+  if (req.headers.range) {
+    fetchHeaders["Range"] = req.headers.range;
+  } else if (req.query._br) {
+    fetchHeaders["Range"] = `bytes=${req.query._br}-`;
+  }
 
-// 1. Forward Range header from player
-if (req.headers.range) {
-  fetchHeaders["Range"] = req.headers.range;
-} else if (req.query._br) {
-  // Fallback: player didn't send Range but we know the byte offset from _br
-  // We can't know the length here, so just request from offset onward
-  fetchHeaders["Range"] = `bytes=${req.query._br}-`;
-}
+  console.log("[proxySegment] fetching:", segmentUrl.slice(0, 120));
+  console.log("[proxySegment] Range header:", fetchHeaders["Range"] || "none");
 
-// 2. Don't add Basic auth on top of signed Cloudinary URLs — the s-- signature IS the auth
-// Remove the Authorization block entirely for signed URLs
-
-const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
+  const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
 
   if (!segmentRes.ok) {
     console.error("[proxySegment] fetch failed:", segmentRes.status, segmentUrl.slice(0, 120));
@@ -682,16 +677,19 @@ const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
 
   if (isPlaylist) {
     const text = await segmentRes.text();
-    console.log("[proxySegment] sub-playlist content:\n", text);
-console.log("[proxySegment] rewritten content:\n", output.join("\n"));
+    console.log("[proxySegment] sub-playlist raw:\n", text);
 
     const urlObj = new URL(segmentUrl);
     const basePath =
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
 
+    const frontendOrigin = process.env.CLIENT_URL || "https://techmindacademy.in";
     const lines = text.split("\n");
     const output = [];
+
+    // Cloudinary ordering: #EXTINF → #EXT-X-BYTERANGE → URI
+    // We collect both tags, then emit: EXTINF, BYTERANGE, proxied-URI
     let pendingExtinf = null;
     let pendingByterange = null;
     let currentByteOffset = null;
@@ -699,10 +697,14 @@ console.log("[proxySegment] rewritten content:\n", output.join("\n"));
     for (const line of lines) {
       const trimmed = line.trim();
 
-      if (!trimmed) { output.push(line); continue; }
+      if (!trimmed) {
+        output.push(line);
+        continue;
+      }
 
       if (trimmed.startsWith("#EXTINF:")) {
-        pendingExtinf = line; continue;
+        pendingExtinf = line;
+        continue;
       }
 
       if (trimmed.startsWith("#EXT-X-BYTERANGE:")) {
@@ -712,6 +714,7 @@ console.log("[proxySegment] rewritten content:\n", output.join("\n"));
         continue;
       }
 
+      // Any other # tag — flush pending and emit
       if (trimmed.startsWith("#")) {
         if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
         if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
@@ -719,39 +722,44 @@ console.log("[proxySegment] rewritten content:\n", output.join("\n"));
         continue;
       }
 
+      // URI line — build absolute URL, then proxy it
       let absoluteUrl;
-      if (trimmed.startsWith("http"))      absoluteUrl = trimmed;
-      else if (trimmed.startsWith("/"))    absoluteUrl = urlObj.origin + trimmed;
-      else                                 absoluteUrl = basePath + trimmed;
+      if (trimmed.startsWith("http"))   absoluteUrl = trimmed;
+      else if (trimmed.startsWith("/")) absoluteUrl = urlObj.origin + trimmed;
+      else                              absoluteUrl = basePath + trimmed;
 
       const uniqueSuffix = currentByteOffset !== null ? `&_br=${currentByteOffset}` : "";
       currentByteOffset = null;
 
-      const frontendOrigin = process.env.CLIENT_URL || "https://techmindacademy.in";
       const proxyLine = `${frontendOrigin}/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
 
-      if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
+      // Emit in correct HLS order: EXTINF → BYTERANGE → URI
       if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
+      if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
       output.push(proxyLine);
     }
+
+    console.log("[proxySegment] rewritten:\n", output.join("\n"));
 
     res.set({
       "Content-Type": "application/vnd.apple.mpegurl",
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-      Pragma: "no-cache",
-      Expires: "0",
+      "Pragma": "no-cache",
+      "Expires": "0",
+      "Access-Control-Allow-Origin": process.env.CLIENT_URL,
+      "Access-Control-Allow-Credentials": "true",
     });
     return res.send(output.join("\n"));
   }
 
-  // Binary .ts segment
+  // ── Binary .ts segment ──────────────────────────────────────────────────────
   const responseHeaders = {
-  "Content-Type": "video/mp2t",
-  "Cache-Control": "no-store",
-  "Access-Control-Allow-Origin": process.env.CLIENT_URL,
-  "Access-Control-Allow-Credentials": "true",
-  "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
-};
+    "Content-Type": "video/mp2t",
+    "Cache-Control": "no-store",
+    "Access-Control-Allow-Origin": process.env.CLIENT_URL,
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+  };
 
   const forwardHeaders = ["content-length", "content-range", "accept-ranges"];
   for (const h of forwardHeaders) {
@@ -761,6 +769,4 @@ console.log("[proxySegment] rewritten content:\n", output.join("\n"));
 
   res.status(segmentRes.status).set(responseHeaders);
   segmentRes.body.pipe(res);
-  console.log("[proxySegment] fetching:", segmentUrl.slice(0, 120));
-console.log("[proxySegment] Range header:", fetchHeaders["Range"] || "none");
 });
