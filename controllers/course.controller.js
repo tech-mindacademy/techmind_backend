@@ -772,6 +772,10 @@ if (!isM3u8Url) {
     const val = segmentRes.headers.get(h);
     if (val) responseHeaders[h] = val;
   }
+  console.log("[proxySegment .ts] status:", segmentRes.status);
+  console.log("[proxySegment .ts] Range sent:", fetchHeaders["Range"] || "none");
+  console.log("[proxySegment .ts] _br param:", req.query._br || "none");
+  console.log("[proxySegment .ts] response headers:", Object.fromEntries(segmentRes.headers.entries()));
 
   res.status(segmentRes.status).set(responseHeaders);
   segmentRes.body.pipe(res);
