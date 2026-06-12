@@ -652,7 +652,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
   }
 
   // Build fetch headers — forward Range if present, fallback to _br param
-  const fetchHeaders = {};
+const fetchHeaders = {};
 const isM3u8Url = segmentUrl.includes(".m3u8");
 
 if (!isM3u8Url) {
