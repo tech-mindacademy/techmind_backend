@@ -596,9 +596,10 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   // ── 7. Rewrite manifest lines to route through our proxy ────────────────────
   // No JWT token — auth is handled by the session cookie via protect middleware.
   const urlObj = new URL(signedUrl);
-  const basePath =
-    urlObj.origin +
-    urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
+const pathOnly = urlObj.pathname; // no search params
+const basePath =
+  urlObj.origin +
+  pathOnly.substring(0, pathOnly.lastIndexOf("/") + 1);
   // NOTE: do NOT append urlObj.search (signature params) to sub-playlist URLs —
   // each Cloudinary sub-playlist URL already carries its own s--signature--.
 
