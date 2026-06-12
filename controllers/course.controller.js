@@ -783,7 +783,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       Pragma: "no-cache",
       Expires: "0",
-      "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
+      "Access-Control-Allow-Origin": process.env.CLIENT_URL,
       "Access-Control-Allow-Credentials": "true",
       "Access-Control-Expose-Headers":
         "Content-Range, Content-Length, Accept-Ranges",
