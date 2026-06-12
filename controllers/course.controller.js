@@ -723,7 +723,8 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
       const uniqueSuffix = currentByteOffset !== null ? `&_br=${currentByteOffset}` : "";
       currentByteOffset = null;
 
-      const proxyLine = `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
+      const frontendOrigin = process.env.CLIENT_URL || "https://techmindacademy.in";
+      const proxyLine = `${frontendOrigin}/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
 
       if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
       if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
