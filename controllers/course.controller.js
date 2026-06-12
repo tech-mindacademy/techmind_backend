@@ -661,7 +661,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   if (segmentUrl.includes("/authenticated/") || segmentUrl.includes("s--")) {
     const credentials = Buffer.from(
-      `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`
+      `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`,
     ).toString("base64");
     fetchHeaders["Authorization"] = `Basic ${credentials}`;
   }
@@ -671,11 +671,15 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
   console.log(
     "[proxySegment] fetch status:",
     segmentRes.status,
-    segmentUrl.slice(0, 120)
+    segmentUrl.slice(0, 120),
   );
 
   if (!segmentRes.ok && segmentRes.status !== 206) {
-    console.error("[proxySegment] fetch failed:", segmentRes.status, segmentUrl.slice(0, 120));
+    console.error(
+      "[proxySegment] fetch failed:",
+      segmentRes.status,
+      segmentUrl.slice(0, 120),
+    );
     return next(new AppError("Failed to fetch segment.", 502));
   }
 
@@ -728,8 +732,14 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
       }
 
       if (trimmed.startsWith("#")) {
-        if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
-        if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
+        if (pendingExtinf) {
+          output.push(pendingExtinf);
+          pendingExtinf = null;
+        }
+        if (pendingByterange) {
+          output.push(pendingByterange);
+          pendingByterange = null;
+        }
         output.push(line);
         continue;
       }
@@ -751,46 +761,56 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
       // Absolute URL so HLS.js never misresolves relative paths
       const proxyLine = `${backendOrigin}/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
 
-      if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
-      if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
+      if (pendingByterange) {
+        output.push(pendingByterange);
+        pendingByterange = null;
+      }
+      if (pendingExtinf) {
+        output.push(pendingExtinf);
+        pendingExtinf = null;
+      }
       output.push(proxyLine);
     }
 
     const rewritten = output.join("\n");
-    console.log("[proxySegment] rewritten sub-playlist:\n", rewritten.slice(0, 800));
+    console.log(
+      "[proxySegment] rewritten sub-playlist:\n",
+      rewritten.slice(0, 800),
+    );
 
-    res.set({
+    rres.set({
       "Content-Type": "application/vnd.apple.mpegurl",
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       Pragma: "no-cache",
       Expires: "0",
+      "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
+      "Access-Control-Allow-Credentials": "true",
+      "Access-Control-Expose-Headers":
+        "Content-Range, Content-Length, Accept-Ranges",
     });
     return res.send(rewritten);
   }
 
   // ── Binary .ts segment ──────────────────────────────────────────────────────
   // ── Binary .ts segment ──────────────────────────────────────────────────────
-const responseHeaders = {
-  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-  Pragma: "no-cache",
-  Expires: "0",
-  "Access-Control-Allow-Origin": process.env.CLIENT_URL,
-  "Access-Control-Allow-Credentials": "true",
-};
+  // ── Binary .ts segment ──────────────────────────────────────────────────────
+  const responseHeaders = {
+    "Content-Type": "video/mp2t",
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    Pragma: "no-cache",
+    Expires: "0",
+    "Access-Control-Allow-Origin": process.env.CLIENT_URL,
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Range, Content-Type",
+    "Access-Control-Expose-Headers":
+      "Content-Range, Content-Length, Accept-Ranges",
+  };
 
-  const forwardHeaders = [
-    "content-type",
-    "content-length",
-    "content-range",
-    "accept-ranges",
-  ];
+  const forwardHeaders = ["content-length", "content-range", "accept-ranges"];
   for (const h of forwardHeaders) {
     const val = segmentRes.headers.get(h);
-    if (val) responseHeaders[h] = val;
-  }
-
-  if (!responseHeaders["content-type"]) {
-    responseHeaders["content-type"] = "video/mp2t";
+    if (val) responseHeaders[h.toLowerCase()] = val;
   }
 
   res.status(segmentRes.status).set(responseHeaders);

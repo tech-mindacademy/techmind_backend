@@ -61,7 +61,18 @@ router.get(
   authorizeRoles("admin"),
   getAdminCoursePreview
 );
-router.get("/proxy-segment",protect, proxySegment);
+// Handle CORS preflight for segment proxy
+router.options("/proxy-segment", (req, res) => {
+  res.set({
+    "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
+    "Access-Control-Allow-Credentials": "true",
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Range, Content-Type",
+    "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+  }).sendStatus(204);
+});
+
+router.get("/proxy-segment", protect, proxySegment);
 router.get(
   "/:courseId/sections/:sectionId/lessons/:lessonId/proxy",
   protect,
