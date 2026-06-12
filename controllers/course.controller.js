@@ -2,16 +2,14 @@ import Course from "../models/Course.model.js";
 import Enrollment from "../models/Enrollment.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { cloudinary } from "../config/cloudinary.js";
-import streamifier from "streamifier";
 import fetch from "node-fetch";
-import jwt from "jsonwebtoken";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC ENDPOINTS
 // ─────────────────────────────────────────────────────────────────────────────
 
 // @route  GET /api/courses
-// @access Public — browse published courses with search/filter/pagination
+// @access Public
 export const getCourses = asyncHandler(async (req, res) => {
   const {
     search,
@@ -78,34 +76,25 @@ export const getCourses = asyncHandler(async (req, res) => {
 });
 
 // @route  GET /api/courses/:slug
-// @access Public — full course detail (sections shown but lesson videos hidden unless enrolled)
+// @access Public
 export const getCourseBySlug = asyncHandler(async (req, res, next) => {
   const param = req.params.slug;
-
   const isObjectId = /^[a-f\d]{24}$/i.test(param);
-
-  // Admins can see any course regardless of publish/approval state
   const isAdmin = req.user && req.user.role === "admin";
 
   let query;
   if (isObjectId) {
     query = { _id: param };
-    // Non-admins still can't see unpublished courses by ID
     if (!isAdmin) query.isPublished = true;
   } else {
     query = { slug: param };
-    // Non-admins only see approved + published courses
     if (!isAdmin) {
       query.isPublished = true;
       query.approvalStatus = "approved";
     }
   }
 
-  const course = await Course.findOne(query).populate(
-    "creator",
-    "name avatar bio",
-  );
-
+  const course = await Course.findOne(query).populate("creator", "name avatar bio");
   if (!course) return next(new AppError("Course not found.", 404));
 
   let isEnrolled = false;
@@ -143,7 +132,7 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
         video: {
           public_id: lesson.video?.public_id || "",
           duration: lesson.video?.duration || 0,
-          url: "", // signed URL fetched fresh per-lesson via /stream endpoint
+          url: "",
         },
       })),
     }));
@@ -171,25 +160,22 @@ export const getCourseBySlug = asyncHandler(async (req, res, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ADMIN PREVIEW — bypasses approval, publish state, and enrollment gates
+// ADMIN PREVIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
-// @route  GET /api/admin/courses/:courseId/preview
+// @route  GET /api/courses/preview/:courseId
 // @access Admin only
 export const getAdminCoursePreview = asyncHandler(async (req, res, next) => {
   const param = req.params.courseId;
   const isObjectId = /^[a-f\d]{24}$/i.test(param);
 
-  // Accept both MongoDB ObjectId and slug — frontend passes whatever is in the URL
   const course = await Course.findOne(
-    isObjectId ? { _id: param } : { slug: param },
+    isObjectId ? { _id: param } : { slug: param }
   ).populate("creator", "name avatar bio");
 
   if (!course) return next(new AppError("Course not found.", 404));
 
   const courseObj = course.toObject();
-
-  // Give admin full signed video URLs for every lesson
   courseObj.sections = courseObj.sections.map((sec) => ({
     ...sec,
     lessons: sec.lessons.map((lesson) => ({
@@ -214,7 +200,7 @@ export const getAdminCoursePreview = asyncHandler(async (req, res, next) => {
 export const getMyCoursesAsCreator = asyncHandler(async (req, res) => {
   const courses = await Course.find({ creator: req.user._id })
     .select(
-      "title slug thumbnail isPublished stats.totalStudents stats.avgRating price createdAt",
+      "title slug thumbnail isPublished stats.totalStudents stats.avgRating price createdAt"
     )
     .sort({ createdAt: -1 });
 
@@ -268,7 +254,7 @@ export const createCourse = asyncHandler(async (req, res, next) => {
 });
 
 // @route  GET /api/courses/:courseId/manage
-// @access Creator (own course) | Admin
+// @access Creator | Admin
 export const getCourseForEdit = asyncHandler(async (req, res, next) => {
   const course = await Course.findById(req.params.courseId);
   if (!course) return next(new AppError("Course not found.", 404));
@@ -282,7 +268,7 @@ export const getCourseForEdit = asyncHandler(async (req, res, next) => {
 });
 
 // @route  PUT /api/courses/:courseId
-// @access Creator (own course) | Admin
+// @access Creator | Admin
 export const updateCourse = asyncHandler(async (req, res, next) => {
   const course = await Course.findById(req.params.courseId);
   if (!course) return next(new AppError("Course not found.", 404));
@@ -293,25 +279,16 @@ export const updateCourse = asyncHandler(async (req, res, next) => {
   }
 
   const fields = [
-    "title",
-    "description",
-    "shortDescription",
-    "category",
-    "language",
-    "level",
-    "price",
-    "discountPrice",
-    "isFree",
+    "title", "description", "shortDescription", "category",
+    "language", "level", "price", "discountPrice", "isFree",
   ];
   fields.forEach((f) => {
     if (req.body[f] !== undefined) course[f] = req.body[f];
   });
 
   if (req.body.tags) course.tags = JSON.parse(req.body.tags);
-  if (req.body.requirements)
-    course.requirements = JSON.parse(req.body.requirements);
-  if (req.body.whatYouLearn)
-    course.whatYouLearn = JSON.parse(req.body.whatYouLearn);
+  if (req.body.requirements) course.requirements = JSON.parse(req.body.requirements);
+  if (req.body.whatYouLearn) course.whatYouLearn = JSON.parse(req.body.whatYouLearn);
 
   if (req.file) {
     if (course.thumbnail?.public_id) {
@@ -328,7 +305,7 @@ export const updateCourse = asyncHandler(async (req, res, next) => {
 });
 
 // @route  DELETE /api/courses/:courseId
-// @access Creator (own course) | Admin
+// @access Creator | Admin
 export const deleteCourse = asyncHandler(async (req, res, next) => {
   const course = await Course.findById(req.params.courseId);
   if (!course) return next(new AppError("Course not found.", 404));
@@ -340,29 +317,21 @@ export const deleteCourse = asyncHandler(async (req, res, next) => {
 
   const destroyPromises = [];
   if (course.thumbnail.public_id)
-    destroyPromises.push(
-      cloudinary.uploader.destroy(course.thumbnail.public_id),
-    );
+    destroyPromises.push(cloudinary.uploader.destroy(course.thumbnail.public_id));
   if (course.previewVideo.public_id)
     destroyPromises.push(
-      cloudinary.uploader.destroy(course.previewVideo.public_id, {
-        resource_type: "video",
-      }),
+      cloudinary.uploader.destroy(course.previewVideo.public_id, { resource_type: "video" })
     );
   course.sections.forEach((sec) => {
     sec.lessons.forEach((lesson) => {
       if (lesson.video?.public_id)
         destroyPromises.push(
-          cloudinary.uploader.destroy(lesson.video.public_id, {
-            resource_type: "video",
-          }),
+          cloudinary.uploader.destroy(lesson.video.public_id, { resource_type: "video" })
         );
       lesson.notes.forEach((note) => {
         if (note.public_id)
           destroyPromises.push(
-            cloudinary.uploader.destroy(note.public_id, {
-              resource_type: "raw",
-            }),
+            cloudinary.uploader.destroy(note.public_id, { resource_type: "raw" })
           );
       });
     });
@@ -375,7 +344,7 @@ export const deleteCourse = asyncHandler(async (req, res, next) => {
 });
 
 // @route  PATCH /api/courses/:courseId/publish
-// @access Creator (own course)
+// @access Creator
 export const togglePublish = asyncHandler(async (req, res, next) => {
   const course = await Course.findById(req.params.courseId);
   if (!course) return next(new AppError("Course not found.", 404));
@@ -386,34 +355,25 @@ export const togglePublish = asyncHandler(async (req, res, next) => {
 
   const hasContent = course.sections.some((s) => s.lessons.length > 0);
   if (!course.isPublished && !hasContent) {
-    return next(
-      new AppError("Add at least one lesson before publishing.", 400),
-    );
+    return next(new AppError("Add at least one lesson before publishing.", 400));
   }
+
   const FINAL_SECTION_PATTERN = /final\s*(quiz|assessment|exam|test)/i;
 
-  // Only validate when publishing (not unpublishing)
   if (!course.isPublished) {
     const finalSection = course.sections.find((s) =>
-      FINAL_SECTION_PATTERN.test(s.title),
+      FINAL_SECTION_PATTERN.test(s.title)
     );
-
     if (!finalSection) {
-      return next(
-        new AppError(
-          "A 'Final Quiz' section is required before publishing.",
-          400,
-        ),
-      );
+      return next(new AppError("A 'Final Quiz' section is required before publishing.", 400));
     }
-
     const hasQuizLesson = finalSection.lessons.some((l) => l.quiz);
     if (!hasQuizLesson) {
       return next(
         new AppError(
           "The Final Quiz section must have at least one lesson with a quiz attached before publishing.",
-          400,
-        ),
+          400
+        )
       );
     }
   }
@@ -436,9 +396,9 @@ export const togglePublish = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @route  POST /api/courses/:courseId/preview-video
+// @access Creator
 export const uploadPreviewVideo = asyncHandler(async (req, res, next) => {
-  console.log(JSON.stringify(req.file, null, 2));
-
   const course = await Course.findById(req.params.courseId);
   if (!course) return next(new AppError("Course not found.", 404));
 
@@ -463,6 +423,8 @@ export const uploadPreviewVideo = asyncHandler(async (req, res, next) => {
   });
 });
 
+// @route  GET /api/courses/categories
+// @access Public
 export const getCategories = asyncHandler(async (req, res) => {
   const categories = await Course.distinct("category", {
     isPublished: true,
@@ -471,11 +433,16 @@ export const getCategories = asyncHandler(async (req, res) => {
 
   res.status(200).json({ success: true, categories: categories.sort() });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// STREAM URL (legacy — kept for backwards compat)
+// ─────────────────────────────────────────────────────────────────────────────
+
 // @route  GET /api/courses/:courseId/sections/:sectionId/lessons/:lessonId/stream
 // @access Enrolled student | Creator | Admin
 export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
   const { courseId, sectionId, lessonId } = req.params;
-  console.log(`[proxy] ${req.user?._id} → course=${courseId} lesson=${lessonId}`);
+
   const course = await Course.findById(courseId);
   if (!course) return next(new AppError("Course not found.", 404));
 
@@ -500,38 +467,41 @@ export const getLessonStreamUrl = asyncHandler(async (req, res, next) => {
     return next(new AppError("No video for this lesson.", 404));
   }
 
-  const timestamp = Date.now();
   const signedUrl = cloudinary.url(lesson.video.public_id, {
     resource_type: "video",
     type: "authenticated",
     secure: true,
     sign_url: true,
-    streaming_profile: "full_hd",
+    streaming_profile: "hd",
     format: "m3u8",
     expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
   });
 
-  // DON'T append anything to the signed URL — just send it as-is
   res.set({
-    "Cache-Control":
-      "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
   });
 
   res.json({ success: true, url: signedUrl, expiresIn: 7200 });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROXY LESSON VIDEO (master manifest)
+// @route  GET /api/courses/:courseId/sections/:sectionId/lessons/:lessonId/proxy
+// @access Enrolled student | Creator | Admin  (protect middleware on route)
+// ─────────────────────────────────────────────────────────────────────────────
 export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   const { courseId, sectionId, lessonId } = req.params;
- 
+
   // ── 1. Load course ──────────────────────────────────────────────────────────
   const course = await Course.findById(courseId);
   if (!course) return next(new AppError("Course not found.", 404));
- 
-  // ── 2. Authorisation check ──────────────────────────────────────────────────
+
+  // ── 2. Auth check ───────────────────────────────────────────────────────────
   const isOwner = course.creator.toString() === req.user._id.toString();
   const isAdmin = req.user.role === "admin";
- 
+
   if (!isOwner && !isAdmin) {
     const enrollment = await Enrollment.findOne({
       student: req.user._id,
@@ -539,103 +509,89 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
     });
     if (!enrollment) return next(new AppError("Not enrolled.", 403));
   }
- 
-  // ── 3. Locate section / lesson ──────────────────────────────────────────────
+
+  // ── 3. Locate lesson ────────────────────────────────────────────────────────
   const section = course.sections.id(sectionId);
   if (!section) return next(new AppError("Section not found.", 404));
- 
+
   const lesson = section.lessons.id(lessonId);
   if (!lesson) return next(new AppError("Lesson not found.", 404));
- 
+
   if (!lesson.video?.public_id) {
     return next(new AppError("No video for this lesson.", 404));
   }
- 
-  // ── 4. Build Cloudinary signed HLS manifest URL ─────────────────────────────
-  // ── 4. Build Cloudinary signed HLS manifest URL ─────────────────────────────
-if (!process.env.JWT_ACCESS_SECRET) {
-  console.error("FATAL: JWT_SECRET is not set");
-  return next(new AppError("Server configuration error.", 500));
-}
 
-const signedUrl = cloudinary.url(lesson.video.public_id, {
-  resource_type: "video",
-  type: "authenticated",
-  secure: true,
-  sign_url: true,
-  streaming_profile: "hd",        // ← more compatible, fewer broken variants
-  format: "m3u8",
-  expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
-});
+  // ── 4. Guard env vars ───────────────────────────────────────────────────────
+  if (
+    !process.env.CLOUDINARY_CLOUD_NAME ||
+    !process.env.CLOUDINARY_API_KEY ||
+    !process.env.CLOUDINARY_API_SECRET
+  ) {
+    console.error("[proxyLessonVideo] Missing Cloudinary env vars");
+    return next(new AppError("Server configuration error.", 500));
+  }
 
-// ── Guard: cloudinary.url() returns empty/invalid string if creds are missing
-if (!signedUrl || !signedUrl.startsWith("http")) {
-  console.error("Cloudinary returned invalid URL:", signedUrl);
-  return next(new AppError("Video URL generation failed — check Cloudinary env vars.", 500));
-}
+  // ── 5. Build Cloudinary signed HLS master manifest URL ──────────────────────
+  const signedUrl = cloudinary.url(lesson.video.public_id, {
+    resource_type: "video",
+    type: "authenticated",
+    secure: true,
+    sign_url: true,
+    streaming_profile: "hd",
+    format: "m3u8",
+    expires_at: Math.floor(Date.now() / 1000) + 60 * 60 * 2,
+  });
 
-console.log("proxyLessonVideo signedUrl:", signedUrl.slice(0, 80)); // safe to log
- 
-  // ── 5. Fetch manifest from Cloudinary ───────────────────────────────────────
+  if (!signedUrl || !signedUrl.startsWith("http")) {
+    console.error("[proxyLessonVideo] Cloudinary returned invalid URL:", signedUrl);
+    return next(new AppError("Video URL generation failed.", 500));
+  }
+
+  console.log("[proxyLessonVideo] signedUrl:", signedUrl.slice(0, 100));
+
+  // ── 6. Fetch master manifest from Cloudinary ────────────────────────────────
   const cloudinaryRes = await fetch(signedUrl);
   if (!cloudinaryRes.ok) {
     console.error(
-      "Cloudinary manifest fetch failed:",
+      "[proxyLessonVideo] Cloudinary fetch failed:",
       cloudinaryRes.status,
-      await cloudinaryRes.text(),
+      await cloudinaryRes.text()
     );
     return next(new AppError("Failed to fetch video stream.", 502));
   }
- 
+
   const manifest = await cloudinaryRes.text();
- 
-  // ── 6. Generate a short-lived segment token (2h) ────────────────────────────
-  // This token is embedded in every segment URL so HLS.js doesn't need
-  // cookies — works across all devices and browsers.
-  const segmentToken = jwt.sign(
-    {
-      courseId,
-      userId: req.user._id.toString(),
-      lessonId,
-    },
-    process.env.JWT_ACCESS_SECRET,
-    { expiresIn: "2h" },
-  );
- 
-  // ── 7. Rewrite manifest lines to go through our proxy ──────────────────────
+
+  // ── 7. Rewrite manifest lines to route through our proxy ────────────────────
+  // No JWT token — auth is handled by the session cookie via protect middleware.
   const urlObj = new URL(signedUrl);
   const basePath =
     urlObj.origin +
     urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
-  const baseQuery = urlObj.search; // Cloudinary signature params
- 
+  // NOTE: do NOT append urlObj.search (signature params) to sub-playlist URLs —
+  // each Cloudinary sub-playlist URL already carries its own s--signature--.
+
   const rewritten = manifest
     .split("\n")
     .map((line) => {
       const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) return line; // keep HLS tags as-is
- 
+      if (!trimmed || trimmed.startsWith("#")) return line;
+
       let absoluteUrl;
       if (trimmed.startsWith("http")) {
+        // Already absolute — use as-is
         absoluteUrl = trimmed;
-        // Append Cloudinary signature if not already present
-        if (baseQuery && !trimmed.includes("s--")) {
-          absoluteUrl += baseQuery;
-        }
       } else if (trimmed.startsWith("/")) {
         absoluteUrl = urlObj.origin + trimmed;
-        if (baseQuery && !trimmed.includes("?")) absoluteUrl += baseQuery;
       } else {
+        // Relative — resolve against basePath, no extra query params
         absoluteUrl = basePath + trimmed;
-        if (baseQuery && !trimmed.includes("?")) absoluteUrl += baseQuery;
       }
- 
-      // Route every segment through our proxy with the JWT token
-      const encoded = encodeURIComponent(absoluteUrl);
-      return `/api/courses/proxy-segment?url=${encoded}&t=${segmentToken}`;
+
+      return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}`;
     })
     .join("\n");
- 
+
   // ── 8. Send rewritten manifest ──────────────────────────────────────────────
   res.set({
     "Content-Type": "application/vnd.apple.mpegurl",
@@ -647,14 +603,14 @@ console.log("proxyLessonVideo signedUrl:", signedUrl.slice(0, 80)); // safe to l
     "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
     "Access-Control-Allow-Credentials": "true",
   });
- 
+
   res.send(rewritten);
 });
- 
+
 // ─────────────────────────────────────────────────────────────────────────────
-// PROXY SEGMENT
-// @route  GET /api/courses/proxy-segment?url=...&t=...
-// @access Token-verified (no cookie needed — works on all devices)
+// PROXY SEGMENT (sub-playlists + .ts byte-range segments)
+// @route  GET /api/courses/proxy-segment?url=...
+// @access protect middleware on route (session cookie — no token needed)
 // ─────────────────────────────────────────────────────────────────────────────
 export const proxySegment = asyncHandler(async (req, res, next) => {
   const { url } = req.query;
@@ -662,11 +618,15 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   const segmentUrl = decodeURIComponent(url);
 
+  // Security: only ever proxy Cloudinary URLs
   if (!segmentUrl.startsWith("https://res.cloudinary.com/")) {
     return next(new AppError("Invalid segment URL.", 400));
   }
 
-  // ── Forward Range header so BYTERANGE playlists work ──────────────────────
+  // ── Forward Range header so #EXT-X-BYTERANGE playlists work ────────────────
+  // HLS.js sends "Range: bytes=X-Y" for byterange segments. Without forwarding
+  // this, Cloudinary returns the whole file with 200 instead of the requested
+  // slice with 206, and HLS.js gets confused and stalls.
   const fetchHeaders = {};
   if (req.headers.range) {
     fetchHeaders["Range"] = req.headers.range;
@@ -674,9 +634,13 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
 
-  // 206 Partial Content is success for byterange requests
+  // 206 Partial Content is a success response for byterange requests
   if (!segmentRes.ok && segmentRes.status !== 206) {
-    console.error("[proxySegment] fetch failed:", segmentRes.status, segmentUrl.slice(0, 120));
+    console.error(
+      "[proxySegment] fetch failed:",
+      segmentRes.status,
+      segmentUrl.slice(0, 120)
+    );
     return next(new AppError("Failed to fetch segment.", 502));
   }
 
@@ -686,10 +650,14 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     contentType.includes("x-mpegURL") ||
     segmentUrl.includes(".m3u8");
 
+  // ── Sub-playlist (.m3u8) — rewrite its segment lines too ───────────────────
   if (isPlaylist) {
     const text = await segmentRes.text();
+    console.log("[proxySegment] sub-playlist raw:\n", text.slice(0, 600));
 
     const urlObj = new URL(segmentUrl);
+    // basePath = origin + path up to last slash, NO query string
+    // Cloudinary .ts filenames are relative to the sub-playlist's directory
     const basePath =
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
@@ -702,10 +670,14 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
         let absoluteUrl;
         if (trimmed.startsWith("http")) {
+          // Already absolute
           absoluteUrl = trimmed;
         } else if (trimmed.startsWith("/")) {
           absoluteUrl = urlObj.origin + trimmed;
         } else {
+          // Relative filename like "hrqh5mfd9szzmpg8otoh.ts"
+          // Resolve against basePath only — do NOT append query/signature params,
+          // the .ts file is served publicly by Cloudinary without a signature
           absoluteUrl = basePath + trimmed;
         }
 
@@ -722,27 +694,31 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     return res.send(rewritten);
   }
 
-  // ── Binary segment — forward status + content-range header ────────────────
-  const status = segmentRes.status; // preserve 206 vs 200
-
+  // ── Binary .ts segment — forward status + range headers, pipe body ──────────
   const responseHeaders = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
   };
 
-  // Forward these headers from Cloudinary so HLS.js byterange works correctly
-  const forwardHeaders = ["content-type", "content-length", "content-range", "accept-ranges"];
+  // Forward these so HLS.js knows the byte range was honoured
+  const forwardHeaders = [
+    "content-type",
+    "content-length",
+    "content-range",
+    "accept-ranges",
+  ];
   for (const h of forwardHeaders) {
     const val = segmentRes.headers.get(h);
     if (val) responseHeaders[h] = val;
   }
 
-  // Fallback content-type if Cloudinary doesn't set it
+  // Fallback content-type
   if (!responseHeaders["content-type"]) {
     responseHeaders["content-type"] = "video/mp2t";
   }
 
-  res.status(status).set(responseHeaders);
+  // Preserve 206 Partial Content status
+  res.status(segmentRes.status).set(responseHeaders);
   segmentRes.body.pipe(res);
 });
