@@ -652,14 +652,15 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
   }
 
   // Build fetch headers — forward Range if present, fallback to _br param
-const fetchHeaders = {};
+  const fetchHeaders = {};
 const isM3u8Url = segmentUrl.includes(".m3u8");
 
 if (!isM3u8Url) {
-  if (req.query._start !== undefined && req.query._end !== undefined) {
-    fetchHeaders["Range"] = `bytes=${req.query._start}-${req.query._end}`;
-  } else if (req.headers.range) {
+  if (req.headers.range) {
     fetchHeaders["Range"] = req.headers.range;
+  } else if (req.query._start !== undefined && req.query._end !== undefined) {
+    // Byte range encoded in URL by our playlist rewriter
+    fetchHeaders["Range"] = `bytes=${req.query._start}-${req.query._end}`;
   }
 }
 
