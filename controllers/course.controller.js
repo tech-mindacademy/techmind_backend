@@ -602,26 +602,22 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
   // NOTE: do NOT append urlObj.search (signature params) to sub-playlist URLs —
   // each Cloudinary sub-playlist URL already carries its own s--signature--.
 
-  const rewritten = manifest
-    .split("\n")
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) return line;
+  const frontendOrigin = process.env.CLIENT_URL || "https://techmindacademy.in";
 
-      let absoluteUrl;
-      if (trimmed.startsWith("http")) {
-        // Already absolute — use as-is
-        absoluteUrl = trimmed;
-      } else if (trimmed.startsWith("/")) {
-        absoluteUrl = urlObj.origin + trimmed;
-      } else {
-        // Relative — resolve against basePath, no extra query params
-        absoluteUrl = basePath + trimmed;
-      }
+const rewritten = manifest
+  .split("\n")
+  .map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return line;
 
-      return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}`;
-    })
-    .join("\n");
+    let absoluteUrl;
+    if (trimmed.startsWith("http")) absoluteUrl = trimmed;
+    else if (trimmed.startsWith("/")) absoluteUrl = urlObj.origin + trimmed;
+    else absoluteUrl = basePath + trimmed;
+
+    return `${frontendOrigin}/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}`;
+  })
+  .join("\n");
 
   // ── 8. Send rewritten manifest ──────────────────────────────────────────────
   res.set({
@@ -632,7 +628,7 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
     Expires: "0",
     ETag: `"${Date.now()}"`,
     "Last-Modified": new Date().toUTCString(),
-    "Access-Control-Allow-Origin": process.env.FRONTEND_URL,
+    "Access-Control-Allow-Origin": process.env.CLIENT_URL,
     "Access-Control-Allow-Credentials": "true",
   });
 
