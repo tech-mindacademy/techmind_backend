@@ -652,23 +652,24 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     return next(new AppError("Invalid segment URL.", 400));
   }
 
-  const fetchHeaders = {};
-  if (req.headers.range) {
-    fetchHeaders["Range"] = req.headers.range;
-  }
+  // Binary .ts segment — replace your current fetch section
+const fetchHeaders = {};
 
-  if (segmentUrl.includes("/authenticated/") || segmentUrl.includes("s--")) {
-    if (process.env.CLOUDINARY_API_KEY && process.env.CLOUDINARY_API_SECRET) {
-      const credentials = Buffer.from(
-        `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`
-      ).toString("base64");
-      fetchHeaders["Authorization"] = `Basic ${credentials}`;
-    }
-  }
+// 1. Forward Range header from player
+if (req.headers.range) {
+  fetchHeaders["Range"] = req.headers.range;
+} else if (req.query._br) {
+  // Fallback: player didn't send Range but we know the byte offset from _br
+  // We can't know the length here, so just request from offset onward
+  fetchHeaders["Range"] = `bytes=${req.query._br}-`;
+}
 
-  const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
+// 2. Don't add Basic auth on top of signed Cloudinary URLs — the s-- signature IS the auth
+// Remove the Authorization block entirely for signed URLs
 
-  if (!segmentRes.ok && segmentRes.status !== 206) {
+const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
+
+  if (!segmentRes.ok) {
     console.error("[proxySegment] fetch failed:", segmentRes.status, segmentUrl.slice(0, 120));
     return next(new AppError("Failed to fetch segment.", 502));
   }
@@ -743,11 +744,12 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   // Binary .ts segment
   const responseHeaders = {
-    "Content-Type": "video/mp2t",
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    Pragma: "no-cache",
-    Expires: "0",
-  };
+  "Content-Type": "video/mp2t",
+  "Cache-Control": "no-store",
+  "Access-Control-Allow-Origin": process.env.CLIENT_URL,
+  "Access-Control-Allow-Credentials": "true",
+  "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges",
+};
 
   const forwardHeaders = ["content-length", "content-range", "accept-ranges"];
   for (const h of forwardHeaders) {
@@ -757,4 +759,6 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   res.status(segmentRes.status).set(responseHeaders);
   segmentRes.body.pipe(res);
+  console.log("[proxySegment] fetching:", segmentUrl.slice(0, 120));
+console.log("[proxySegment] Range header:", fetchHeaders["Range"] || "none");
 });
