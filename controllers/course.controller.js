@@ -769,11 +769,14 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
   }
 
   // ── Binary .ts segment ──────────────────────────────────────────────────────
-  const responseHeaders = {
-    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    Pragma: "no-cache",
-    Expires: "0",
-  };
+  // ── Binary .ts segment ──────────────────────────────────────────────────────
+const responseHeaders = {
+  "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  Pragma: "no-cache",
+  Expires: "0",
+  "Access-Control-Allow-Origin": process.env.CLIENT_URL,
+  "Access-Control-Allow-Credentials": "true",
+};
 
   const forwardHeaders = [
     "content-type",
