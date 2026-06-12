@@ -657,66 +657,60 @@ console.log("proxyLessonVideo signedUrl:", signedUrl.slice(0, 80)); // safe to l
 // @access Token-verified (no cookie needed — works on all devices)
 // ─────────────────────────────────────────────────────────────────────────────
 export const proxySegment = asyncHandler(async (req, res, next) => {
-  const { url, t } = req.query;
- 
+  const { url } = req.query;
   if (!url) return next(new AppError("No URL provided.", 400));
- 
-  // ── 1. Verify segment token ─────────────────────────────────────────────────
-  if (!t) return next(new AppError("No segment token provided.", 401));
- 
-  try {
-    jwt.verify(t, process.env.JWT_ACCESS_SECRET);
-  } catch (err) {
-    return next(new AppError("Invalid or expired segment token.", 401));
-  }
- 
-  // ── 2. Fetch the segment from Cloudinary ────────────────────────────────────
+
   const segmentUrl = decodeURIComponent(url);
- 
+
+  // Security: only proxy Cloudinary URLs
+  if (!segmentUrl.startsWith("https://res.cloudinary.com/")) {
+    return next(new AppError("Invalid segment URL.", 400));
+  }
+
   const segmentRes = await fetch(segmentUrl);
   if (!segmentRes.ok) {
-    console.error("Segment fetch failed:", segmentRes.status, segmentUrl);
+    console.error("[proxySegment] fetch failed:", segmentRes.status, segmentUrl.slice(0, 120));
     return next(new AppError("Failed to fetch segment.", 502));
   }
- 
+
   const contentType = segmentRes.headers.get("content-type") || "";
- 
-  // ── 3a. Sub-playlist (.m3u8) — rewrite its lines too ───────────────────────
-  if (
+  const isPlaylist =
     contentType.includes("mpegurl") ||
     contentType.includes("x-mpegURL") ||
-    segmentUrl.includes(".m3u8")
-  ) {
+    segmentUrl.includes(".m3u8");
+
+  if (isPlaylist) {
     const text = await segmentRes.text();
- 
+    console.log("[proxySegment] sub-playlist raw:\n", text.slice(0, 500));
+
     const urlObj = new URL(segmentUrl);
+    // basePath = everything up to and including the last slash, NO query string
     const basePath =
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
-    const baseQuery = urlObj.search;
- 
+
     const rewritten = text
       .split("\n")
       .map((line) => {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) return line;
- 
+
+        // Build absolute URL — Cloudinary segments are usually already absolute
         let absoluteUrl;
         if (trimmed.startsWith("http")) {
+          // Already absolute — use as-is, signature is already in the URL
           absoluteUrl = trimmed;
         } else if (trimmed.startsWith("/")) {
           absoluteUrl = urlObj.origin + trimmed;
-          if (baseQuery && !trimmed.includes("?")) absoluteUrl += baseQuery;
         } else {
+          // Relative path — prepend basePath only, no extra query params
           absoluteUrl = basePath + trimmed;
-          if (baseQuery && !trimmed.includes("?")) absoluteUrl += baseQuery;
         }
- 
-        // Keep the same token flowing through sub-playlists
-        return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}&t=${t}`;
+
+        return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}`;
       })
       .join("\n");
- 
+
     res.set({
       "Content-Type": "application/vnd.apple.mpegurl",
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -725,14 +719,13 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     });
     return res.send(rewritten);
   }
- 
-  // ── 3b. Regular .ts video segment — pipe straight through ──────────────────
+
+  // Binary .ts segment — pipe straight through
   res.set({
     "Content-Type": "video/mp2t",
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
   });
- 
   segmentRes.body.pipe(res);
 });
