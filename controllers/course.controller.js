@@ -682,6 +682,8 @@ const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
 
   if (isPlaylist) {
     const text = await segmentRes.text();
+    console.log("[proxySegment] sub-playlist content:\n", text);
+console.log("[proxySegment] rewritten content:\n", output.join("\n"));
 
     const urlObj = new URL(segmentUrl);
     const basePath =
