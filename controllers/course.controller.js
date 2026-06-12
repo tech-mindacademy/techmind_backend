@@ -653,15 +653,14 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   // Build fetch headers — forward Range if present, fallback to _br param
   const fetchHeaders = {};
-
 const isM3u8Url = segmentUrl.includes(".m3u8");
 
 if (!isM3u8Url) {
-  // Only forward Range for actual binary segment requests
   if (req.headers.range) {
     fetchHeaders["Range"] = req.headers.range;
-  } else if (req.query._br) {
-    fetchHeaders["Range"] = `bytes=${req.query._br}-`;
+  } else if (req.query._start !== undefined && req.query._end !== undefined) {
+    // Byte range encoded in URL by our playlist rewriter
+    fetchHeaders["Range"] = `bytes=${req.query._start}-${req.query._end}`;
   }
 }
 
@@ -682,81 +681,75 @@ if (!isM3u8Url) {
     segmentUrl.includes(".m3u8");
 
   if (isPlaylist) {
-    const text = await segmentRes.text();
-    console.log("[proxySegment] sub-playlist raw:\n", text);
+  const text = await segmentRes.text();
+  const urlObj = new URL(segmentUrl);
+  const basePath =
+    urlObj.origin +
+    urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
 
-    const urlObj = new URL(segmentUrl);
-    const basePath =
-      urlObj.origin +
-      urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
+  const frontendOrigin = process.env.CLIENT_URL || "https://techmindacademy.in";
+  const lines = text.split("\n");
+  const output = [];
 
-    const frontendOrigin = process.env.CLIENT_URL || "https://techmindacademy.in";
-    const lines = text.split("\n");
-    const output = [];
+  let pendingExtinf = null;
+  let pendingByterange = null; // "length@offset"
 
-    // Cloudinary ordering: #EXTINF → #EXT-X-BYTERANGE → URI
-    // We collect both tags, then emit: EXTINF, BYTERANGE, proxied-URI
-    let pendingExtinf = null;
-    let pendingByterange = null;
-    let currentByteOffset = null;
+  for (const line of lines) {
+    const trimmed = line.trim();
 
-    for (const line of lines) {
-      const trimmed = line.trim();
+    if (!trimmed) { output.push(line); continue; }
 
-      if (!trimmed) {
-        output.push(line);
-        continue;
-      }
-
-      if (trimmed.startsWith("#EXTINF:")) {
-        pendingExtinf = line;
-        continue;
-      }
-
-      if (trimmed.startsWith("#EXT-X-BYTERANGE:")) {
-        pendingByterange = line;
-        const match = trimmed.match(/#EXT-X-BYTERANGE:(\d+)@(\d+)/);
-        if (match) currentByteOffset = match[2];
-        continue;
-      }
-
-      // Any other # tag — flush pending and emit
-      if (trimmed.startsWith("#")) {
-        if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
-        if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
-        output.push(line);
-        continue;
-      }
-
-      // URI line — build absolute URL, then proxy it
-      let absoluteUrl;
-      if (trimmed.startsWith("http"))   absoluteUrl = trimmed;
-      else if (trimmed.startsWith("/")) absoluteUrl = urlObj.origin + trimmed;
-      else                              absoluteUrl = basePath + trimmed;
-
-      const uniqueSuffix = currentByteOffset !== null ? `&_br=${currentByteOffset}` : "";
-      currentByteOffset = null;
-
-      const proxyLine = `${frontendOrigin}/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
-
-      // Emit in correct HLS order: EXTINF → BYTERANGE → URI
-      if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
-      if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
-      output.push(proxyLine);
+    if (trimmed.startsWith("#EXTINF:")) {
+      pendingExtinf = line;
+      continue;
     }
 
-    console.log("[proxySegment] rewritten:\n", output.join("\n"));
+    if (trimmed.startsWith("#EXT-X-BYTERANGE:")) {
+      // Store but DON'T emit — we'll encode into the URL instead
+      pendingByterange = trimmed.replace("#EXT-X-BYTERANGE:", "");
+      continue;
+    }
 
-    res.set({
-      "Content-Type": "application/vnd.apple.mpegurl",
-      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-      "Pragma": "no-cache",
-      "Expires": "0",
-      "Access-Control-Allow-Origin": process.env.CLIENT_URL,
-      "Access-Control-Allow-Credentials": "true",
-    });
-    return res.send(output.join("\n"));
+    if (trimmed.startsWith("#")) {
+      if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
+      output.push(line);
+      continue;
+    }
+
+    // URI line
+    let absoluteUrl;
+    if (trimmed.startsWith("http"))   absoluteUrl = trimmed;
+    else if (trimmed.startsWith("/")) absoluteUrl = urlObj.origin + trimmed;
+    else                              absoluteUrl = basePath + trimmed;
+
+    // Encode byte range as query params so proxy can build the Range header
+    let byteParams = "";
+    if (pendingByterange) {
+      // format: "length@offset"
+      const match = pendingByterange.match(/^(\d+)@(\d+)$/);
+      if (match) {
+        const length = parseInt(match[1]);
+        const offset = parseInt(match[2]);
+        byteParams = `&_start=${offset}&_end=${offset + length - 1}`;
+      }
+      pendingByterange = null;
+    }
+
+    if (pendingExtinf) { output.push(pendingExtinf); pendingExtinf = null; }
+    // No #EXT-X-BYTERANGE emitted — range is in the URL
+    output.push(`${frontendOrigin}/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${byteParams}`);
   }
+
+  res.set({
+    "Content-Type": "application/vnd.apple.mpegurl",
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Access-Control-Allow-Origin": process.env.CLIENT_URL,
+    "Access-Control-Allow-Credentials": "true",
+  });
+  return res.send(output.join("\n"));
+}
 
   // ── Binary .ts segment ──────────────────────────────────────────────────────
   const responseHeaders = {
