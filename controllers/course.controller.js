@@ -661,14 +661,29 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     fetchHeaders["Range"] = req.headers.range;
   }
 
+  // Authenticated Cloudinary delivery requires HTTP Basic Auth for
+  // server-side fetches (API key = username, API secret = password).
+  // This covers both sub-playlists and .ts segments under /authenticated/.
+  if (segmentUrl.includes("/authenticated/") || segmentUrl.includes("s--")) {
+    const credentials = Buffer.from(
+      `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`
+    ).toString("base64");
+    fetchHeaders["Authorization"] = `Basic ${credentials}`;
+  }
+
   const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
 
-  // 206 Partial Content is a success response for byterange requests
+  console.log(
+    "[proxySegment] fetch status:",
+    segmentRes.status,
+    segmentUrl.slice(0, 120)
+  );
+
   if (!segmentRes.ok && segmentRes.status !== 206) {
     console.error(
       "[proxySegment] fetch failed:",
       segmentRes.status,
-      segmentUrl.slice(0, 120),
+      segmentUrl.slice(0, 120)
     );
     return next(new AppError("Failed to fetch segment.", 502));
   }
@@ -679,7 +694,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     contentType.includes("x-mpegURL") ||
     segmentUrl.includes(".m3u8");
 
-  // ── Sub-playlist (.m3u8) — rewrite its segment lines ───────────────────────
+  // ── Sub-playlist (.m3u8) — rewrite segment lines ───────────────────────────
   if (isPlaylist) {
     const text = await segmentRes.text();
     console.log("[proxySegment] sub-playlist raw:\n", text.slice(0, 600));
@@ -689,7 +704,6 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
 
-    // Parse lines into structured segments then re-emit in HLS.js-friendly order
     const lines = text.split("\n");
     const output = [];
     let pendingExtinf = null;
@@ -707,31 +721,24 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
       if (trimmed.startsWith("#EXTINF:")) {
         pendingExtinf = line;
-        continue; // hold — emit after #EXT-X-BYTERANGE
+        continue;
       }
 
       if (trimmed.startsWith("#EXT-X-BYTERANGE:")) {
         pendingByterange = line;
         const match = trimmed.match(/#EXT-X-BYTERANGE:(\d+)@(\d+)/);
         if (match) currentByteOffset = match[2];
-        continue; // hold — emit before segment URI
+        continue;
       }
 
       if (trimmed.startsWith("#")) {
-        // Flush any pending tags before other directives
-        if (pendingExtinf) {
-          output.push(pendingExtinf);
-          pendingExtinf = null;
-        }
-        if (pendingByterange) {
-          output.push(pendingByterange);
-          pendingByterange = null;
-        }
+        if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
+        if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
         output.push(line);
         continue;
       }
 
-      // Segment URI line — resolve and rewrite
+      // Segment URI — resolve to absolute
       let absoluteUrl;
       if (trimmed.startsWith("http")) {
         absoluteUrl = trimmed;
@@ -747,23 +754,14 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
       const proxyLine = `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
 
-      // Emit in correct HLS order: #EXT-X-BYTERANGE → #EXTINF → URI
-      if (pendingByterange) {
-        output.push(pendingByterange);
-        pendingByterange = null;
-      }
-      if (pendingExtinf) {
-        output.push(pendingExtinf);
-        pendingExtinf = null;
-      }
+      // Emit: #EXT-X-BYTERANGE → #EXTINF → URI
+      if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
+      if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
       output.push(proxyLine);
     }
 
     const rewritten = output.join("\n");
-    console.log(
-      "[proxySegment] rewritten sub-playlist:\n",
-      rewritten.slice(0, 800),
-    );
+    console.log("[proxySegment] rewritten sub-playlist:\n", rewritten.slice(0, 800));
 
     res.set({
       "Content-Type": "application/vnd.apple.mpegurl",
@@ -774,7 +772,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     return res.send(rewritten);
   }
 
-  // ── Binary .ts segment — forward status + range headers, pipe body ──────────
+  // ── Binary .ts segment — pipe body ─────────────────────────────────────────
   const responseHeaders = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     Pragma: "no-cache",
@@ -792,12 +790,10 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     if (val) responseHeaders[h] = val;
   }
 
-  // Fallback content-type
   if (!responseHeaders["content-type"]) {
     responseHeaders["content-type"] = "video/mp2t";
   }
 
-  // Preserve 206 Partial Content status
   res.status(segmentRes.status).set(responseHeaders);
   segmentRes.body.pipe(res);
 });
