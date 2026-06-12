@@ -72,7 +72,7 @@ router.get(
 //   }).sendStatus(204);
 // });
 
-router.get("/proxy-segment", protect, proxySegment);
+router.get("/proxy-segment", proxySegment);
 router.get(
   "/:courseId/sections/:sectionId/lessons/:lessonId/proxy",
   protect,
