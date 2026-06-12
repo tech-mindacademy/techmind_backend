@@ -665,7 +665,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
   if (!t) return next(new AppError("No segment token provided.", 401));
  
   try {
-    jwt.verify(t, process.env.JWT_SECRET);
+    jwt.verify(t, process.env.JWT_ACCESS_SECRET);
   } catch (err) {
     return next(new AppError("Invalid or expired segment token.", 401));
   }
