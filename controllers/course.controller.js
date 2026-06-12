@@ -662,13 +662,20 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   const segmentUrl = decodeURIComponent(url);
 
-  // Security: only proxy Cloudinary URLs
   if (!segmentUrl.startsWith("https://res.cloudinary.com/")) {
     return next(new AppError("Invalid segment URL.", 400));
   }
 
-  const segmentRes = await fetch(segmentUrl);
-  if (!segmentRes.ok) {
+  // ── Forward Range header so BYTERANGE playlists work ──────────────────────
+  const fetchHeaders = {};
+  if (req.headers.range) {
+    fetchHeaders["Range"] = req.headers.range;
+  }
+
+  const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
+
+  // 206 Partial Content is success for byterange requests
+  if (!segmentRes.ok && segmentRes.status !== 206) {
     console.error("[proxySegment] fetch failed:", segmentRes.status, segmentUrl.slice(0, 120));
     return next(new AppError("Failed to fetch segment.", 502));
   }
@@ -681,10 +688,8 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   if (isPlaylist) {
     const text = await segmentRes.text();
-    console.log("[proxySegment] sub-playlist raw:\n", text.slice(0, 500));
 
     const urlObj = new URL(segmentUrl);
-    // basePath = everything up to and including the last slash, NO query string
     const basePath =
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
@@ -695,15 +700,12 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
         const trimmed = line.trim();
         if (!trimmed || trimmed.startsWith("#")) return line;
 
-        // Build absolute URL — Cloudinary segments are usually already absolute
         let absoluteUrl;
         if (trimmed.startsWith("http")) {
-          // Already absolute — use as-is, signature is already in the URL
           absoluteUrl = trimmed;
         } else if (trimmed.startsWith("/")) {
           absoluteUrl = urlObj.origin + trimmed;
         } else {
-          // Relative path — prepend basePath only, no extra query params
           absoluteUrl = basePath + trimmed;
         }
 
@@ -720,12 +722,27 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     return res.send(rewritten);
   }
 
-  // Binary .ts segment — pipe straight through
-  res.set({
-    "Content-Type": "video/mp2t",
+  // ── Binary segment — forward status + content-range header ────────────────
+  const status = segmentRes.status; // preserve 206 vs 200
+
+  const responseHeaders = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     Pragma: "no-cache",
     Expires: "0",
-  });
+  };
+
+  // Forward these headers from Cloudinary so HLS.js byterange works correctly
+  const forwardHeaders = ["content-type", "content-length", "content-range", "accept-ranges"];
+  for (const h of forwardHeaders) {
+    const val = segmentRes.headers.get(h);
+    if (val) responseHeaders[h] = val;
+  }
+
+  // Fallback content-type if Cloudinary doesn't set it
+  if (!responseHeaders["content-type"]) {
+    responseHeaders["content-type"] = "video/mp2t";
+  }
+
+  res.status(status).set(responseHeaders);
   segmentRes.body.pipe(res);
 });
