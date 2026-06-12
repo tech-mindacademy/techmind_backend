@@ -553,7 +553,7 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
  
   // ── 4. Build Cloudinary signed HLS manifest URL ─────────────────────────────
   // ── 4. Build Cloudinary signed HLS manifest URL ─────────────────────────────
-if (!process.env.JWT_SECRET) {
+if (!process.env.JWT_ACCESS_SECRET) {
   console.error("FATAL: JWT_SECRET is not set");
   return next(new AppError("Server configuration error.", 500));
 }
@@ -598,7 +598,7 @@ console.log("proxyLessonVideo signedUrl:", signedUrl.slice(0, 80)); // safe to l
       userId: req.user._id.toString(),
       lessonId,
     },
-    process.env.JWT_SECRET,
+    process.env.JWT_ACCESS_SECRET,
     { expiresIn: "2h" },
   );
  
