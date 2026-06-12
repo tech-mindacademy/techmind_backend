@@ -655,10 +655,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     return next(new AppError("Invalid segment URL.", 400));
   }
 
-  // ── Forward Range header so #EXT-X-BYTERANGE playlists work ────────────────
-  // HLS.js sends "Range: bytes=X-Y" for byterange segments. Without forwarding
-  // this, Cloudinary returns the whole file with 200 instead of the requested
-  // slice with 206, and HLS.js gets confused and stalls.
+  // Forward Range header so #EXT-X-BYTERANGE playlists work
   const fetchHeaders = {};
   if (req.headers.range) {
     fetchHeaders["Range"] = req.headers.range;
@@ -671,7 +668,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     console.error(
       "[proxySegment] fetch failed:",
       segmentRes.status,
-      segmentUrl.slice(0, 120),
+      segmentUrl.slice(0, 120)
     );
     return next(new AppError("Failed to fetch segment.", 502));
   }
@@ -682,8 +679,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     contentType.includes("x-mpegURL") ||
     segmentUrl.includes(".m3u8");
 
-  // ── Sub-playlist (.m3u8) — rewrite its segment lines too ───────────────────
-  // ── Sub-playlist (.m3u8) — rewrite its segment lines too ───────────────────
+  // ── Sub-playlist (.m3u8) — rewrite its segment lines ───────────────────────
   if (isPlaylist) {
     const text = await segmentRes.text();
     console.log("[proxySegment] sub-playlist raw:\n", text.slice(0, 600));
@@ -693,16 +689,24 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
 
-    // Detect byterange playlist — if it is one, .ts files are served publicly
-    // by Cloudinary without a signature, so we can expose the absolute URL
-    // directly. Proxying byterange segments breaks HLS.js because both entries
-    // share the same .ts filename → same proxy URL → deduplication bug.
-    const isByteRange = text.includes("#EXT-X-BYTERANGE");
+    // Track byte offset so each proxied .ts URL is unique.
+    // HLS.js deduplicates segments by URL — if two byterange entries resolve
+    // to the same proxy URL it only fetches once and the video stalls.
+    let currentByteOffset = null;
 
     const rewritten = text
       .split("\n")
       .map((line) => {
         const trimmed = line.trim();
+
+        // Capture the byte start offset from #EXT-X-BYTERANGE so we can tag
+        // the next segment line with it, making each proxy URL unique.
+        if (trimmed.startsWith("#EXT-X-BYTERANGE:")) {
+          const match = trimmed.match(/#EXT-X-BYTERANGE:(\d+)@(\d+)/);
+          if (match) currentByteOffset = match[2];
+          return line; // keep the tag unchanged
+        }
+
         if (!trimmed || trimmed.startsWith("#")) return line;
 
         // Resolve to absolute Cloudinary URL
@@ -712,18 +716,18 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
         } else if (trimmed.startsWith("/")) {
           absoluteUrl = urlObj.origin + trimmed;
         } else {
+          // Relative filename e.g. "hrqh5mfd9szzmpg8otoh.ts"
           absoluteUrl = basePath + trimmed;
         }
 
-        // For byterange playlists: expose the direct Cloudinary URL so
-        // HLS.js sends Range-header requests straight to Cloudinary.
-        // The .ts file is public (no signature required).
-        if (isByteRange) {
-          return absoluteUrl;
-        }
+        // Append _br so byterange entries for the same .ts file get distinct
+        // proxy URLs. The param is ignored when forwarding to Cloudinary —
+        // only the Range header matters for the actual byte slice.
+        const uniqueSuffix =
+          currentByteOffset !== null ? `&_br=${currentByteOffset}` : "";
+        currentByteOffset = null; // reset after use
 
-        // Normal (non-byterange) segments: keep proxying as before
-        return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}`;
+        return `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
       })
       .join("\n");
 
@@ -743,7 +747,6 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     Expires: "0",
   };
 
-  // Forward these so HLS.js knows the byte range was honoured
   const forwardHeaders = [
     "content-type",
     "content-length",
