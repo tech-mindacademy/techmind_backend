@@ -653,11 +653,17 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   // Build fetch headers — forward Range if present, fallback to _br param
   const fetchHeaders = {};
+
+const isM3u8Url = segmentUrl.includes(".m3u8");
+
+if (!isM3u8Url) {
+  // Only forward Range for actual binary segment requests
   if (req.headers.range) {
     fetchHeaders["Range"] = req.headers.range;
   } else if (req.query._br) {
     fetchHeaders["Range"] = `bytes=${req.query._br}-`;
   }
+}
 
   console.log("[proxySegment] fetching:", segmentUrl.slice(0, 120));
   console.log("[proxySegment] Range header:", fetchHeaders["Range"] || "none");
