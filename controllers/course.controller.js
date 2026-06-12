@@ -778,7 +778,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
       rewritten.slice(0, 800),
     );
 
-    rres.set({
+    res.set({
       "Content-Type": "application/vnd.apple.mpegurl",
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       Pragma: "no-cache",
