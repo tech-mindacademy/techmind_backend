@@ -650,20 +650,15 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
 
   const segmentUrl = decodeURIComponent(url);
 
-  // Security: only ever proxy Cloudinary URLs
   if (!segmentUrl.startsWith("https://res.cloudinary.com/")) {
     return next(new AppError("Invalid segment URL.", 400));
   }
 
-  // Forward Range header so #EXT-X-BYTERANGE playlists work
   const fetchHeaders = {};
   if (req.headers.range) {
     fetchHeaders["Range"] = req.headers.range;
   }
 
-  // Authenticated Cloudinary delivery requires HTTP Basic Auth for
-  // server-side fetches (API key = username, API secret = password).
-  // This covers both sub-playlists and .ts segments under /authenticated/.
   if (segmentUrl.includes("/authenticated/") || segmentUrl.includes("s--")) {
     const credentials = Buffer.from(
       `${process.env.CLOUDINARY_API_KEY}:${process.env.CLOUDINARY_API_SECRET}`
@@ -680,11 +675,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
   );
 
   if (!segmentRes.ok && segmentRes.status !== 206) {
-    console.error(
-      "[proxySegment] fetch failed:",
-      segmentRes.status,
-      segmentUrl.slice(0, 120)
-    );
+    console.error("[proxySegment] fetch failed:", segmentRes.status, segmentUrl.slice(0, 120));
     return next(new AppError("Failed to fetch segment.", 502));
   }
 
@@ -694,7 +685,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     contentType.includes("x-mpegURL") ||
     segmentUrl.includes(".m3u8");
 
-  // ── Sub-playlist (.m3u8) — rewrite segment lines ───────────────────────────
+  // ── Sub-playlist (.m3u8) ────────────────────────────────────────────────────
   if (isPlaylist) {
     const text = await segmentRes.text();
     console.log("[proxySegment] sub-playlist raw:\n", text.slice(0, 600));
@@ -703,6 +694,11 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     const basePath =
       urlObj.origin +
       urlObj.pathname.substring(0, urlObj.pathname.lastIndexOf("/") + 1);
+
+    // Use absolute backend URL so HLS.js resolves segment URLs correctly
+    // regardless of which URL it considers the "base" for relative paths.
+    const backendOrigin =
+      process.env.BACKEND_URL || "https://api.techmindacademy.in";
 
     const lines = text.split("\n");
     const output = [];
@@ -738,7 +734,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
         continue;
       }
 
-      // Segment URI — resolve to absolute
+      // Segment URI
       let absoluteUrl;
       if (trimmed.startsWith("http")) {
         absoluteUrl = trimmed;
@@ -752,9 +748,9 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
         currentByteOffset !== null ? `&_br=${currentByteOffset}` : "";
       currentByteOffset = null;
 
-      const proxyLine = `/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
+      // Absolute URL so HLS.js never misresolves relative paths
+      const proxyLine = `${backendOrigin}/api/courses/proxy-segment?url=${encodeURIComponent(absoluteUrl)}${uniqueSuffix}`;
 
-      // Emit: #EXT-X-BYTERANGE → #EXTINF → URI
       if (pendingByterange) { output.push(pendingByterange); pendingByterange = null; }
       if (pendingExtinf)    { output.push(pendingExtinf);    pendingExtinf = null; }
       output.push(proxyLine);
@@ -772,7 +768,7 @@ export const proxySegment = asyncHandler(async (req, res, next) => {
     return res.send(rewritten);
   }
 
-  // ── Binary .ts segment — pipe body ─────────────────────────────────────────
+  // ── Binary .ts segment ──────────────────────────────────────────────────────
   const responseHeaders = {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     Pragma: "no-cache",
