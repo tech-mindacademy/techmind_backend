@@ -9,6 +9,7 @@ import Coupon from "../models/Coupon.model.js";
 import User from "../models/User.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { notifyEnrollment } from "../utils/notifications.utils.js";
+import { paymentRefundedTemplate } from "../utils/email.utils.js";
 import { creditWallet } from "./wallet.controller.js";
 
 const PLATFORM_FEE_PERCENT = Number(process.env.PLATFORM_FEE_PERCENT) || 20;
@@ -196,6 +197,23 @@ export const refundOrder = asyncHandler(async (req, res, next) => {
   order.refundedAt = new Date();
   order.refundReason = req.body.reason || "Admin refund";
   await order.save();
+
+  try {
+  const student = await User.findById(order.student).select("name email").lean();
+  const course  = await Course.findById(order.course).select("title").lean();
+  if (student && course) {
+    sendEmail({
+      to:      student.email,
+      subject: `Refund Processed: ${course.title} — Rs. ${order.displayAmount}`,
+      html:    paymentRefundedTemplate(
+        student.name,
+        course.title,
+        order.displayAmount,
+        order.razorpayPaymentId,
+      ),
+    }).catch(() => {});
+  }
+} catch { /* silent — refund already processed */ }
 
   await Enrollment.findOneAndDelete({ student: order.student, course: order.course });
   await Course.findByIdAndUpdate(order.course, { $inc: { "stats.totalStudents": -1 } });

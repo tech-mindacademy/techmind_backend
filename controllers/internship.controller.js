@@ -1,7 +1,12 @@
 import Internship from "../models/Internship.model.js";
 import InternshipApplication from "../models/InternshipApplication.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
-import { sendEmail } from "../utils/email.utils.js";
+import {
+  sendEmail,
+  internshipAdminTemplate,
+  internshipApplicantTemplate,
+} from "../utils/email.utils.js";
+// import { notifyInternshipStatusUpdate } from "../utils/notifications.utils.js";
 import { appendApplicationToSheet, updateApplicationStatusInSheet } from "../utils/sheets.utils.js";
 import { generateOfferLetter } from "../utils/generateOfferLetter.js";
 import User from "../models/User.model.js";
@@ -94,32 +99,36 @@ export const applyForInternship = asyncHandler(async (req, res, next) => {
 
   // ── Emails ─────────────────────────────────────────────────────────────────
   try {
-    const adminEmail = process.env.SMTP_USER;
-
-    // Admin notification
-    await sendEmail({
-      to: adminEmail,
-      subject: `📩 New Application (Auto-Shortlisted) — ${internship.title} @ ${internship.company}`,
-      html: buildAdminEmail({ name, email, phone, college, degree, year, skills, linkedIn, github, whyApply, internship, application }),
-    });
-
-    // Applicant confirmation — shortlisted message
-    const emailOpts = {
-      to: email,
-      subject: `🎉 You're Shortlisted — ${internship.title} at ${internship.company}`,
-      html: buildApplicantEmail({ name, internship, application }),
-    };
-    if (pdfBuffer) {
-      emailOpts.attachments = [{
-        filename: "Offer_Letter.pdf",
-        content: pdfBuffer,
-        contentType: "application/pdf",
-      }];
-    }
-    await sendEmail(emailOpts);
-  } catch (emailErr) {
-    console.error("Email notification failed:", emailErr.message);
+  const adminEmail = process.env.SMTP_USER;
+ 
+  await sendEmail({
+    to: adminEmail,
+    subject: `New Internship Application: ${internship.title} at ${internship.company} from ${name}`,
+    html: internshipAdminTemplate({
+      name, email, phone, college, degree, year,
+      skills, linkedIn, github, whyApply,
+      internship, application,
+    }),
+  });
+ 
+  const applicantEmailOpts = {
+    to: email,
+    subject: `Application Received: ${internship.title} at ${internship.company} — You Have Been Shortlisted`,
+    html: internshipApplicantTemplate({ name, internship, application }),
+  };
+ 
+  if (pdfBuffer) {
+    applicantEmailOpts.attachments = [{
+      filename: "Offer_Letter.pdf",
+      content:  pdfBuffer,
+      contentType: "application/pdf",
+    }];
   }
+ 
+  await sendEmail(applicantEmailOpts);
+} catch (emailErr) {
+  console.error("Email notification failed:", emailErr.message);
+}
 
   res.status(201).json({
     success: true,
