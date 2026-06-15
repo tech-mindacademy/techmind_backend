@@ -3,31 +3,46 @@ import jwt from "jsonwebtoken";
 import User from "../models/User.model.js";
 import { sendTokens, generateAccessToken } from "../utils/jwt.utils.js";
 import {
-  sendVerifyEmail,
-  sendResetPasswordEmail,
+  sendEmail,
+  verifyEmailTemplate,
+  resetPasswordTemplate,
 } from "../utils/email.utils.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import { cloudinary } from "../config/cloudinary.js";
 
 // ─── @route  POST /api/auth/register ─────────────────────────────────────────
+// @access Public
 export const register = asyncHandler(async (req, res, next) => {
   const { name, email, password, role } = req.body;
 
-  const safeRole = role === "creator" ? "creator" : "student";
-  const creatorRequestStatus = "none";
+  // Prevent self-registering as admin
+  // Creators register as students with a pending request — approved by admin before getting creator role
+const safeRole = role === "creator" ? "creator" : "student"; // Creators register directly
+const creatorRequestStatus = "none"; // No approval needed on signup
 
+  // Check if email exists
   const existingUser = await User.findOne({ email });
-  if (existingUser) return next(new AppError("Email already registered.", 400));
+  if (existingUser) {
+    return next(new AppError("Email already registered.", 400));
+  }
 
+  // Create user
   const user = await User.create({ name, email, password, role: safeRole, creatorRequestStatus });
 
+  // Generate email verification token
   const verifyToken = user.generateEmailVerifyToken();
   await user.save({ validateBeforeSave: false });
 
+  // Send verification email
   const verifyUrl = `${process.env.CLIENT_URL}/verify-email/${verifyToken}`;
   try {
-    await sendVerifyEmail(user.email, user.name, verifyUrl);
+    await sendEmail({
+      to: user.email,
+      subject: "Verify your Tech Vidya account",
+      html: verifyEmailTemplate(user.name, verifyUrl),
+    });
   } catch (err) {
+    // If email fails, still create account but clear tokens
     user.emailVerifyToken = undefined;
     user.emailVerifyExpire = undefined;
     await user.save({ validateBeforeSave: false });
@@ -41,15 +56,21 @@ export const register = asyncHandler(async (req, res, next) => {
 });
 
 // ─── @route  GET /api/auth/verify-email/:token ───────────────────────────────
+// @access Public
 export const verifyEmail = asyncHandler(async (req, res, next) => {
-  const hashedToken = crypto.createHash("sha256").update(req.params.token).digest("hex");
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(req.params.token)
+    .digest("hex");
 
   const user = await User.findOne({
     emailVerifyToken: hashedToken,
     emailVerifyExpire: { $gt: Date.now() },
   });
 
-  if (!user) return next(new AppError("Invalid or expired verification token.", 400));
+  if (!user) {
+    return next(new AppError("Invalid or expired verification token.", 400));
+  }
 
   user.isVerified = true;
   user.emailVerifyToken = undefined;
@@ -60,18 +81,32 @@ export const verifyEmail = asyncHandler(async (req, res, next) => {
 });
 
 // ─── @route  POST /api/auth/login ────────────────────────────────────────────
+// @access Public
 export const login = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
-  if (!email || !password) return next(new AppError("Email and password are required.", 400));
 
+  if (!email || !password) {
+    return next(new AppError("Email and password are required.", 400));
+  }
+
+  // Get user with password (select: false by default)
   const user = await User.findOne({ email }).select("+password +refreshToken");
-  if (!user) return next(new AppError("Invalid email or password.", 401));
+  if (!user) {
+    return next(new AppError("Invalid email or password.", 401));
+  }
 
+  // Check password
   const isMatch = await user.comparePassword(password);
-  if (!isMatch) return next(new AppError("Invalid email or password.", 401));
+  if (!isMatch) {
+    return next(new AppError("Invalid email or password.", 401));
+  }
 
-  if (!user.isActive) return next(new AppError("Your account has been deactivated.", 403));
+  // Check account active
+  if (!user.isActive) {
+    return next(new AppError("Your account has been deactivated.", 403));
+  }
 
+  // Update last login
   user.lastLogin = Date.now();
   await user.save({ validateBeforeSave: false });
 
@@ -79,10 +114,15 @@ export const login = asyncHandler(async (req, res, next) => {
 });
 
 // ─── @route  POST /api/auth/refresh-token ────────────────────────────────────
+// @access Public (uses httpOnly cookie)
 export const refreshToken = asyncHandler(async (req, res, next) => {
   const token = req.cookies.refreshToken;
-  if (!token) return next(new AppError("No refresh token found.", 401));
 
+  if (!token) {
+    return next(new AppError("No refresh token found.", 401));
+  }
+
+  // Verify refresh token
   let decoded;
   try {
     decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
@@ -91,29 +131,40 @@ export const refreshToken = asyncHandler(async (req, res, next) => {
   }
 
   const user = await User.findById(decoded.id);
-  if (!user || !user.isActive) return next(new AppError("User not found or deactivated.", 401));
+  if (!user || !user.isActive) {
+    return next(new AppError("User not found or deactivated.", 401));
+  }
 
+  // Issue new access token only
   const newAccessToken = generateAccessToken(user._id, user.role);
-  res.status(200).json({ success: true, accessToken: newAccessToken });
+
+  res.status(200).json({
+    success: true,
+    accessToken: newAccessToken,
+  });
 });
 
 // ─── @route  POST /api/auth/logout ───────────────────────────────────────────
+// @access Private
 export const logout = asyncHandler(async (req, res, next) => {
   res.clearCookie("refreshToken", {
     httpOnly: true,
-    secure:   true,
-    sameSite: "none",
-    path:     "/",
+    secure: true,
+    sameSite: "none",  // ← must match sendTokens exactly
+    path: "/",
   });
+ 
   res.status(200).json({ success: true, message: "Logged out successfully." });
 });
 
 // ─── @route  POST /api/auth/forgot-password ──────────────────────────────────
+// @access Public
 export const forgotPassword = asyncHandler(async (req, res, next) => {
   const { email } = req.body;
-  const user = await User.findOne({ email });
 
+  const user = await User.findOne({ email });
   if (!user) {
+    // Generic response to prevent email enumeration
     return res.status(200).json({
       success: true,
       message: "If that email exists, a reset link has been sent.",
@@ -125,7 +176,11 @@ export const forgotPassword = asyncHandler(async (req, res, next) => {
 
   const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
   try {
-    await sendResetPasswordEmail(user.email, user.name, resetUrl);
+    await sendEmail({
+      to: user.email,
+      subject: "Tech Vidya Password Reset",
+      html: resetPasswordTemplate(user.name, resetUrl),
+    });
   } catch (err) {
     user.passwordResetToken = undefined;
     user.passwordResetExpire = undefined;
@@ -140,19 +195,27 @@ export const forgotPassword = asyncHandler(async (req, res, next) => {
 });
 
 // ─── @route  POST /api/auth/reset-password/:token ────────────────────────────
+// @access Public
 export const resetPassword = asyncHandler(async (req, res, next) => {
-  const hashedToken = crypto.createHash("sha256").update(req.params.token).digest("hex");
+  const hashedToken = crypto
+    .createHash("sha256")
+    .update(req.params.token)
+    .digest("hex");
 
   const user = await User.findOne({
-    passwordResetToken:  hashedToken,
+    passwordResetToken: hashedToken,
     passwordResetExpire: { $gt: Date.now() },
   });
 
-  if (!user) return next(new AppError("Invalid or expired reset token.", 400));
+  if (!user) {
+    return next(new AppError("Invalid or expired reset token.", 400));
+  }
 
   const { password } = req.body;
   if (!password || password.length < 8) {
-    return next(new AppError("Password must be at least 8 characters.", 400));
+    return next(
+      new AppError("Password must be at least 8 characters.", 400)
+    );
   }
 
   user.password = password;
@@ -164,19 +227,22 @@ export const resetPassword = asyncHandler(async (req, res, next) => {
 });
 
 // ─── @route  GET /api/auth/me ─────────────────────────────────────────────────
+// @access Private
 export const getMe = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user._id);
   res.status(200).json({ success: true, user });
 });
 
 // ─── @route  PUT /api/auth/profile ───────────────────────────────────────────
+// @access Private
 export const updateProfile = asyncHandler(async (req, res, next) => {
   const user = await User.findById(req.user._id);
   if (!user) return next(new AppError("User not found.", 404));
 
-  if (req.body.name)              user.name = req.body.name.trim().slice(0, 50);
-  if (req.body.bio !== undefined) user.bio  = req.body.bio.slice(0, 500);
+  if (req.body.name) user.name = req.body.name.trim().slice(0, 50);
+  if (req.body.bio !== undefined) user.bio = req.body.bio.slice(0, 500);
 
+  // Avatar upload via Cloudinary (multer + cloudinary storage handles this)
   if (req.file) {
     if (user.avatar?.public_id) {
       await cloudinary.uploader.destroy(user.avatar.public_id).catch(() => {});
@@ -189,6 +255,7 @@ export const updateProfile = asyncHandler(async (req, res, next) => {
 });
 
 // ─── @route  PUT /api/auth/change-password ───────────────────────────────────
+// @access Private
 export const changePassword = asyncHandler(async (req, res, next) => {
   const { currentPassword, newPassword } = req.body;
   if (!currentPassword || !newPassword) {
