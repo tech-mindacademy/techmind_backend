@@ -99,10 +99,8 @@ export const applyForInternship = asyncHandler(async (req, res, next) => {
 
   // ── Emails ─────────────────────────────────────────────────────────────────
   try {
-  const adminEmail = process.env.SMTP_USER;
- 
   await sendEmail({
-    to: adminEmail,
+    to: process.env.SMTP_USER,
     subject: `New Internship Application: ${internship.title} at ${internship.company} from ${name}`,
     html: internshipAdminTemplate({
       name, email, phone, college, degree, year,
@@ -110,24 +108,25 @@ export const applyForInternship = asyncHandler(async (req, res, next) => {
       internship, application,
     }),
   });
- 
-  const applicantEmailOpts = {
+} catch (e) {
+  console.error("Admin email failed:", e.message);
+}
+
+try {
+  await sendEmail({
     to: email,
     subject: `Application Received: ${internship.title} at ${internship.company} — You Have Been Shortlisted`,
     html: internshipApplicantTemplate({ name, internship, application }),
-  };
- 
-  if (pdfBuffer) {
-    applicantEmailOpts.attachments = [{
-      filename: "Offer_Letter.pdf",
-      content:  pdfBuffer,
-      contentType: "application/pdf",
-    }];
-  }
- 
-  await sendEmail(applicantEmailOpts);
-} catch (emailErr) {
-  console.error("Email notification failed:", emailErr.message);
+    ...(pdfBuffer && {
+      attachments: [{
+        filename: "Offer_Letter.pdf",
+        content: pdfBuffer,
+        contentType: "application/pdf",
+      }],
+    }),
+  });
+} catch (e) {
+  console.error("Applicant email failed:", e.message);
 }
 
   res.status(201).json({
