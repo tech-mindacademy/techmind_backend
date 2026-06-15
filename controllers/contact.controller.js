@@ -1,28 +1,32 @@
 import fetch from "node-fetch";
-import { sendContactFormToAdmin, sendContactConfirmationToUser } from "../utils/email.utils.js";
+import { sendEmail, contactFormTemplate, contactConfirmationTemplate } from "../utils/email.utils.js";
 
 const appendToSheet = async (name, email, message) => {
   const SHEET_URL = process.env.GOOGLE_SCRIPT_URL;
+
   if (!SHEET_URL) {
     console.warn("GOOGLE_SCRIPT_URL not set — skipping sheet append");
     return;
   }
+
   try {
     const payload = JSON.stringify({
-      type:           "contact",
+      type: "contact",
       "Submitted At": new Date().toLocaleString("en-IN"),
-      "Name":         name,
-      "Email":        email,
-      "Message":      message,
+      "Name": name,
+      "Email": email,
+      "Message": message,
     });
+
     const response = await fetch(SHEET_URL, {
-      method:   "POST",
-      headers:  { "Content-Type": "text/plain" },
-      body:     payload,
-      redirect: "follow",
+      method: "POST",
+      headers: { "Content-Type": "text/plain" }, // ← changed from application/json
+      body: payload,
+      redirect: "follow",                         // ← added
     });
+
     const text = await response.text();
-    console.log("Sheet response:", text);
+    console.log("Sheet response:", text); // ← will show success/error from Apps Script
   } catch (err) {
     console.error("Google Sheet append failed:", err.message);
   }
@@ -36,12 +40,21 @@ export const sendContactMessage = async (req, res) => {
   }
 
   try {
+    // Emails first — these are critical
     await Promise.all([
-      sendContactFormToAdmin(process.env.SMTP_USER, name, email, message),
-      sendContactConfirmationToUser(email, name, message),
+      sendEmail({
+        to: process.env.SMTP_USER,
+        subject: `📬New Contact Message from ${name}`,
+        html: contactFormTemplate(name, email, message),
+      }),
+      sendEmail({
+        to: email,
+        subject: `We received your message, ${name}!`,
+        html: contactConfirmationTemplate(name, message),
+      }),
     ]);
 
-    // Sheet is non-critical — fire and forget
+    // Sheet is non-critical — fire and forget, never awaited
     appendToSheet(name, email, message);
 
     res.status(200).json({ message: "Message sent successfully." });
