@@ -115,7 +115,7 @@ export const applyForInternship = asyncHandler(async (req, res, next) => {
 try {
   await sendEmail({
     to: email,
-    subject: `Application Received: ${internship.title} at ${internship.company} — You Have Been Shortlisted`,
+    subject: `Application Received: ${internship.title} at ${internship.company} - You Have Been Shortlisted`,
     html: internshipApplicantTemplate({ name, internship, application }),
     ...(pdfBuffer && {
       attachments: [{

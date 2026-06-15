@@ -573,7 +573,8 @@ export const internshipApplicantTemplate = ({ name, internship, application }) =
     infoRow("Application Reference", application._id.toString(), true)
   ) +
   notice(`Our team will review your profile in detail and reach out to you within 2 to 3 business days with the next steps. Please keep an eye on this email address for further communication.`, "info") +
-  p(`Your offer letter is attached to this email. Please download and keep it for your records.`) +
+p(`Your offer letter is attached to this email. Please download it, sign it, and submit it using the link below.`) +
+btn("Submit Signed Offer Letter", "https://docs.google.com/forms/d/e/1FAIpQLSfOTYuJISYC4225bcVQlyWoCJVbeoUbFF9jkVd2nMUosuCdbg/viewform?usp=publish-editor") +
   divider() +
   small(`If you have any questions, reply to this email with your application reference number and our team will assist you.`)
 );
