@@ -1,36 +1,25 @@
+import { sendEmail } from "./email.utils.js"; // your existing Gmail OAuth sender
 
-
-import { sendEmail } from "./email.utils.js";
-const wrap = (content, preheader = "") => `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>Tech Mind Academy</title>
-  <style>
-    body,table,td,a{-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%}
-    body{margin:0!important;padding:0!important;background-color:#f4f6f9}
-    a{color:#2563eb}
-    @media only screen and (max-width:620px){.email-wrapper{width:100%!important}.email-body{padding:24px 20px!important}}
-  </style>
-</head>
-<body style="margin:0;padding:0;background-color:#f4f6f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
-  ${preheader ? `<div style="display:none;max-height:0;overflow:hidden;font-size:1px;color:#f4f6f9;">${preheader}&zwnj;&nbsp;&zwnj;</div>` : ""}
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#f4f6f9;">
-    <tr><td align="center" style="padding:40px 20px;">
-      <table role="presentation" class="email-wrapper" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
-        <tr><td style="padding-bottom:24px;">
-          <span style="font-size:18px;font-weight:700;color:#111827;letter-spacing:-0.3px;">Tech Mind Academy</span>
+// ─── Shared helpers (mirrors your email.utils.js style) ──────────────────────
+const wrap = (content) => `
+<!DOCTYPE html>
+<html>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:Inter,system-ui,sans-serif">
+  <table width="100%" cellpadding="0" cellspacing="0" style="padding:40px 16px">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
+        <!-- Header -->
+        <tr><td style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:28px 32px">
+          <p style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.3px">Tech Vidya</p>
         </td></tr>
-        <tr><td style="background-color:#ffffff;border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;">
-          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-            <tr><td class="email-body" style="padding:40px 40px 32px;">${content}</td></tr>
-          </table>
-        </td></tr>
-        <tr><td style="padding-top:28px;text-align:center;font-size:12px;color:#9ca3af;line-height:1.6;">
-          <p style="margin:0 0 4px;">Tech Mind Academy &bull; techmindacademy.in</p>
-          <p style="margin:0;">You received this because you have an account with us. &copy; ${new Date().getFullYear()} Tech Mind Academy.</p>
+        <!-- Body -->
+        <tr><td style="padding:32px">${content}</td></tr>
+        <!-- Footer -->
+        <tr><td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0">
+          <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">
+            © ${new Date().getFullYear()} Tech Vidya. You're receiving this because you have an account with us.
+          </p>
         </td></tr>
       </table>
     </td></tr>
@@ -38,185 +27,204 @@ const wrap = (content, preheader = "") => `<!DOCTYPE html>
 </body>
 </html>`;
 
-const h = (t) => `<h1 style="margin:0 0 16px;font-size:22px;font-weight:700;color:#111827;line-height:1.3;">${t}</h1>`;
-const p = (t) => `<p style="margin:0 0 20px;font-size:15px;color:#374151;line-height:1.65;">${t}</p>`;
-const small = (t) => `<p style="margin:20px 0 0;font-size:13px;color:#9ca3af;line-height:1.6;">${t}</p>`;
-const divider = () => `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:28px 0;"><tr><td style="border-top:1px solid #e5e7eb;"></td></tr></table>`;
-
 const btn = (text, url) =>
-  `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;">
-    <tr><td style="background-color:#2563eb;border-radius:6px;">
-      <a href="${url}" target="_blank" style="display:inline-block;padding:13px 28px;font-size:14px;font-weight:600;color:#ffffff;text-decoration:none;">${text}</a>
-    </td></tr>
-  </table>`;
+  `<a href="${url}" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;font-weight:600;font-size:14px;padding:12px 28px;border-radius:10px;margin:20px 0">${text}</a>`;
 
-const infoRow = (label, value, shade = false) =>
-  `<tr style="${shade ? "background-color:#f9fafb;" : "background-color:#ffffff;"}">
-    <td style="padding:12px 16px;font-size:13px;font-weight:600;color:#6b7280;width:40%;border-bottom:1px solid #f3f4f6;">${label}</td>
-    <td style="padding:12px 16px;font-size:13px;color:#111827;border-bottom:1px solid #f3f4f6;">${value}</td>
+const h1 = (text) =>
+  `<h1 style="margin:0 0 8px;font-size:22px;font-weight:700;color:#1e293b">${text}</h1>`;
+
+const p = (text) =>
+  `<p style="margin:0 0 16px;font-size:15px;color:#475569;line-height:1.6">${text}</p>`;
+
+const small = (text) =>
+  `<p style="margin:12px 0 0;font-size:12px;color:#94a3b8">${text}</p>`;
+
+// Info table row — for refund detail cards
+const row = (label, value) => `
+  <tr>
+    <td style="padding:10px 14px;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9;width:45%">${label}</td>
+    <td style="padding:10px 14px;font-size:13px;color:#1e293b;font-weight:600;border-bottom:1px solid #f1f5f9">${value}</td>
   </tr>`;
 
-const infoTable = (rows) =>
-  `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;border:1px solid #e5e7eb;border-radius:6px;overflow:hidden;">${rows}</table>`;
-
-const callout = (text, variant = "info") => {
-  const v = {
-    info:    { bg: "#eff6ff", border: "#2563eb", text: "#1e40af" },
-    success: { bg: "#f0fdf4", border: "#16a34a", text: "#166534" },
-    warning: { bg: "#fffbeb", border: "#d97706", text: "#92400e" },
-    danger:  { bg: "#fef2f2", border: "#dc2626", text: "#991b1b" },
-  }[variant] || { bg: "#eff6ff", border: "#2563eb", text: "#1e40af" };
-  return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
-    <tr><td style="background-color:${v.bg};border-left:4px solid ${v.border};border-radius:0 6px 6px 0;padding:16px 20px;">
-      <p style="margin:0;font-size:14px;color:${v.text};line-height:1.65;">${text}</p>
-    </td></tr>
+const infoTable = (rows) => `
+  <table width="100%" cellpadding="0" cellspacing="0"
+    style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;margin:0 0 20px">
+    ${rows}
   </table>`;
+
+const statusBadge = (status) => {
+  const map = {
+    pending:  { bg: "#fef9c3", color: "#854d0e", label: "Pending Review" },
+    approved: { bg: "#dcfce7", color: "#166534", label: "Approved" },
+    rejected: { bg: "#fee2e2", color: "#991b1b", label: "Rejected" },
+  };
+  const s = map[status] || map.pending;
+  return `<span style="display:inline-block;background:${s.bg};color:${s.color};font-size:12px;font-weight:600;padding:3px 12px;border-radius:999px">${s.label}</span>`;
 };
 
-const refundStatusBadge = (status) => {
-  const s = {
-    pending:  "Pending Review",
-    approved: "Approved",
-    rejected: "Not Approved",
-  }[status] || status;
-  return `<span style="font-size:13px;font-weight:600;color:#374151;">${s}</span>`;
+const noteBox = (text, variant = "info") => {
+  const styles = {
+    info:    { bg: "#eff6ff", border: "#bfdbfe", color: "#1e40af" },
+    success: { bg: "#f0fdf4", border: "#bbf7d0", color: "#166534" },
+    warning: { bg: "#fffbeb", border: "#fde68a", color: "#92400e" },
+    danger:  { bg: "#fef2f2", border: "#fecaca", color: "#991b1b" },
+  };
+  const s = styles[variant] || styles.info;
+  return `
+    <div style="background:${s.bg};border:1px solid ${s.border};border-radius:10px;padding:14px 16px;margin:0 0 20px">
+      <p style="margin:0;font-size:13px;color:${s.color};line-height:1.6">${text}</p>
+    </div>`;
 };
 
-// ─── Template 1: Student — refund request received ────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATE 1 — Student: refund request received
+// ─────────────────────────────────────────────────────────────────────────────
+const refundRequestedStudentTemplate = ({
+  studentName, courseName, amountPaid, progressPercent, reason, refundId,
+}) => wrap(`
+  ${h1("Refund Request Received 📩")}
+  ${p(`Hi <strong>${studentName}</strong>, we've received your refund request for the course below. Our team will review it within <strong>2 business days</strong>.`)}
 
-const refundRequestedStudentTemplate = ({ studentName, courseName, amountPaid, progressPercent, reason, refundId }) =>
-  wrap(
-    h("Refund request received") +
-    p(`Hi ${studentName}, we have received your refund request. Our support team will review it within 2 business days and notify you of the outcome.`) +
-    infoTable(
-      infoRow("Course", courseName, true) +
-      infoRow("Amount Paid", `Rs. ${Number(amountPaid).toLocaleString("en-IN")}`) +
-      infoRow("Progress Completed", `${progressPercent}%`, true) +
-      infoRow("Reference ID", `<span style="font-family:monospace;font-size:12px;">${refundId}</span>`) +
-      infoRow("Status", refundStatusBadge("pending"), true)
-    ) +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
-      <tr><td style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:16px 20px;">
-        <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.8px;">Your reason</p>
-        <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">${reason}</p>
-      </td></tr>
-    </table>` +
-    callout(`Once reviewed, if your request is approved, the refund will be processed to your original payment method within 5 to 10 business days.`, "warning") +
-    btn("View Refund Status", `${process.env.CLIENT_URL}/student/refunds`) +
-    divider() +
-    small(`If you did not submit this request, please contact us immediately at <a href="mailto:${process.env.SMTP_USER}" style="color:#9ca3af;">${process.env.SMTP_USER}</a>.`),
-    `Your refund request for "${courseName}" has been received.`
-  );
+  ${infoTable(
+    row("Course", courseName) +
+    row("Amount Paid", `₹${Number(amountPaid).toLocaleString("en-IN")}`) +
+    row("Your Progress", `${progressPercent}%`) +
+    row("Request ID", `<code style="font-size:11px;color:#6366f1">${refundId}</code>`) +
+    row("Status", statusBadge("pending"))
+  )}
 
-// ─── Template 2: Admin — new refund alert ────────────────────────────────────
+  <div style="background:#f8fafc;border-left:4px solid #6366f1;border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 20px">
+    <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#374151">Your reason</p>
+    <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5">${reason}</p>
+  </div>
 
-const refundAlertAdminTemplate = ({ studentName, studentEmail, courseName, amountPaid, progressPercent, reason, refundId }) =>
-  wrap(
-    h("New refund request — action required") +
-    p(`A student has submitted a refund request. Please review and process it within the standard 2 business day window.`) +
-    infoTable(
-      infoRow("Student", `${studentName} &lt;${studentEmail}&gt;`, true) +
-      infoRow("Course", courseName) +
-      infoRow("Amount Paid", `Rs. ${Number(amountPaid).toLocaleString("en-IN")}`, true) +
-      infoRow("Progress at Request", `${progressPercent}%`) +
-      infoRow("Reference ID", `<span style="font-family:monospace;font-size:12px;">${refundId}</span>`, true) +
-      infoRow("Status", refundStatusBadge("pending"))
-    ) +
-    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
-      <tr><td style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:16px 20px;">
-        <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.8px;">Student's reason</p>
-        <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">${reason}</p>
-      </td></tr>
-    </table>` +
-    btn("Review in Admin Panel", `${process.env.CLIENT_URL}/admin/refunds`) +
-    divider() +
-    small(`Log in to the admin panel to approve or reject this request.`),
-    `Refund request from ${studentName} — ${courseName}.`
-  );
+  ${noteBox(
+    "⏱ <strong>What happens next?</strong><br/>Our support team will review your request and respond within 2 business days. If approved, the refund will be processed to your original payment method within 5–10 business days.",
+    "warning"
+  )}
 
-// ─── Template 3: Student — refund approved ────────────────────────────────────
+  ${btn("View My Refund Requests", `${process.env.CLIENT_URL}/student/refunds`)}
+  ${small("If you didn't submit this request, please contact us immediately.")}
+`);
 
-const refundApprovedStudentTemplate = ({ studentName, courseName, refundAmount, paymentMethod, adminNote, refundId }) =>
-  wrap(
-    h("Your refund has been approved") +
-    p(`Hi ${studentName}, we have reviewed your request and approved a refund for the course below.`) +
-    infoTable(
-      infoRow("Course", courseName, true) +
-      infoRow("Refund Amount", `<strong style="color:#111827;">Rs. ${Number(refundAmount).toLocaleString("en-IN")}</strong>`) +
-      infoRow("Payment Method", paymentMethod, true) +
-      infoRow("Reference ID", `<span style="font-family:monospace;font-size:12px;">${refundId}</span>`) +
-      infoRow("Status", refundStatusBadge("approved"), true)
-    ) +
-    (adminNote
-      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
-          <tr><td style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:16px 20px;">
-            <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.8px;">Note from our team</p>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">${adminNote}</p>
-          </td></tr>
-        </table>`
-      : "") +
-    callout(`Refunds typically appear in your account within 5 to 10 business days depending on your bank. UPI refunds are usually faster (3 to 5 days).`, "info") +
-    p(`Your access to <strong>${courseName}</strong> has been removed. We hope to welcome you back to Tech Mind Academy for your next course.`) +
-    btn("Explore Other Courses", `${process.env.CLIENT_URL}/courses`) +
-    divider() +
-    small(`Thank you for giving Tech Mind Academy a try. If you have questions, reply to this email.`),
-    `Your refund of Rs. ${Number(refundAmount).toLocaleString("en-IN")} for "${courseName}" has been approved.`
-  );
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATE 2 — Admin: new refund request alert
+// ─────────────────────────────────────────────────────────────────────────────
+const refundAlertAdminTemplate = ({
+  studentName, studentEmail, courseName, amountPaid, progressPercent, reason, refundId,
+}) => wrap(`
+  ${h1("New Refund Request ⚠️")}
+  ${p("A student has submitted a refund request that requires your review.")}
 
-// ─── Template 4: Student — refund rejected ────────────────────────────────────
+  ${infoTable(
+    row("Student", `${studentName}<br/><span style="font-weight:400;color:#64748b;font-size:12px">${studentEmail}</span>`) +
+    row("Course", courseName) +
+    row("Amount Paid", `₹${Number(amountPaid).toLocaleString("en-IN")}`) +
+    row("Progress at Request", `${progressPercent}%`) +
+    row("Request ID", `<code style="font-size:11px;color:#6366f1">${refundId}</code>`) +
+    row("Status", statusBadge("pending"))
+  )}
 
-const refundRejectedStudentTemplate = ({ studentName, courseName, adminNote, progressPercent, refundId }) =>
-  wrap(
-    h("Update on your refund request") +
-    p(`Hi ${studentName}, we have reviewed your refund request and are unable to approve it at this time.`) +
-    infoTable(
-      infoRow("Course", courseName, true) +
-      infoRow("Progress Completed", `${progressPercent}%`) +
-      infoRow("Reference ID", `<span style="font-family:monospace;font-size:12px;">${refundId}</span>`, true) +
-      infoRow("Status", refundStatusBadge("rejected"))
-    ) +
-    (adminNote
-      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:20px 0;">
-          <tr><td style="background-color:#f9fafb;border:1px solid #e5e7eb;border-radius:6px;padding:16px 20px;">
-            <p style="margin:0 0 8px;font-size:12px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.8px;">Reason from our team</p>
-            <p style="margin:0;font-size:14px;color:#374151;line-height:1.65;">${adminNote}</p>
-          </td></tr>
-        </table>`
-      : "") +
-    callout(`If you believe this decision was made in error, please email us at <a href="mailto:${process.env.SMTP_USER}" style="color:#1e40af;">${process.env.SMTP_USER}</a> with your Reference ID and we will look into it promptly.`, "warning") +
-    p(`Your access to <strong>${courseName}</strong> remains active. You can continue learning at any time.`) +
-    btn("Continue Learning", `${process.env.CLIENT_URL}/student/learn`) +
-    divider() +
-    small(`We are always here to help. Reply to this email with any questions.`),
-    `Update on your refund request for "${courseName}".`
-  );
+  <div style="background:#f8fafc;border-left:4px solid #f59e0b;border-radius:0 8px 8px 0;padding:14px 16px;margin:0 0 20px">
+    <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#374151">Student's reason</p>
+    <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5">${reason}</p>
+  </div>
 
-// ─── Exported senders ────────────────────────────────────────────────────────
+  ${btn("Review in Admin Panel", `${process.env.CLIENT_URL}/admin/refunds`)}
+  ${small("Log in to the admin panel to approve or reject this request.")}
+`);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATE 3 — Student: refund approved
+// ─────────────────────────────────────────────────────────────────────────────
+const refundApprovedStudentTemplate = ({
+  studentName, courseName, refundAmount, paymentMethod, adminNote, refundId,
+}) => wrap(`
+  ${h1("Refund Approved! ✅")}
+  ${p(`Great news, <strong>${studentName}</strong> — your refund request has been approved.`)}
+
+  ${infoTable(
+    row("Course", courseName) +
+    row("Refund Amount", `<span style="color:#16a34a;font-size:15px">₹${Number(refundAmount).toLocaleString("en-IN")}</span>`) +
+    row("Payment Method", paymentMethod) +
+    row("Request ID", `<code style="font-size:11px;color:#6366f1">${refundId}</code>`) +
+    row("Status", statusBadge("approved"))
+  )}
+
+  ${adminNote ? noteBox(`<strong>Message from our team:</strong><br/>${adminNote}`, "success") : ""}
+
+  ${noteBox(
+    "💳 <strong>When will I receive the money?</strong><br/>Refunds typically appear within <strong>5–10 business days</strong> depending on your bank. UPI refunds are usually faster (3–5 days). International cards may take up to 15 days.",
+    "info"
+  )}
+
+  ${p(`Your access to <strong>${courseName}</strong> has been removed. We hope to see you back on Tech Vidya for your next learning journey! 🚀`)}
+
+  ${btn("Explore More Courses", `${process.env.CLIENT_URL}/courses`)}
+  ${small("Thank you for giving Tech Vidya a try. We'd love to have you back.")}
+`);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TEMPLATE 4 — Student: refund rejected
+// ─────────────────────────────────────────────────────────────────────────────
+const refundRejectedStudentTemplate = ({
+  studentName, courseName, adminNote, progressPercent, refundId,
+}) => wrap(`
+  ${h1("Refund Request Update")}
+  ${p(`Hi <strong>${studentName}</strong>, after reviewing your request we're unable to process this refund.`)}
+
+  ${infoTable(
+    row("Course", courseName) +
+    row("Progress at Request", `${progressPercent}%`) +
+    row("Request ID", `<code style="font-size:11px;color:#6366f1">${refundId}</code>`) +
+    row("Status", statusBadge("rejected"))
+  )}
+
+  ${adminNote ? noteBox(`<strong>Reason from our team:</strong><br/>${adminNote}`, "danger") : ""}
+
+  <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;margin:0 0 20px">
+    <p style="margin:0 0 6px;font-size:13px;font-weight:600;color:#374151">Not satisfied with this decision?</p>
+    <p style="margin:0;font-size:13px;color:#64748b;line-height:1.5">
+      If you believe this was made in error, email us at
+      <a href="mailto:${process.env.SMTP_USER}" style="color:#6366f1;text-decoration:none">${process.env.SMTP_USER}</a>
+      with your Request ID and we'll look into it promptly.
+    </p>
+  </div>
+
+  ${p(`Your access to <strong>${courseName}</strong> remains active. Keep learning! 🎓`)}
+
+  ${btn("Continue Learning", `${process.env.CLIENT_URL}/student/learn`)}
+  ${small("We're always here to help — reach out if you have any questions.")}
+`);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// EXPORTED SENDERS — drop-in replacements for refund.controller.js
+// ─────────────────────────────────────────────────────────────────────────────
 
 export const sendRefundRequestedEmailToStudent = ({ studentEmail, ...rest }) =>
   sendEmail({
     to: studentEmail,
-    subject: `Refund request received: ${rest.courseName} (Ref: ${rest.refundId})`,
+    subject: `Refund Request Received — ${rest.courseName}`,
     html: refundRequestedStudentTemplate(rest),
   });
 
 export const sendRefundAlertEmailToAdmin = ({ adminEmail, ...rest }) =>
   sendEmail({
     to: adminEmail,
-    subject: `Refund request from ${rest.studentName}: ${rest.courseName}`,
+    subject: `[Action Required] New Refund Request from ${rest.studentName} — ${rest.courseName}`,
     html: refundAlertAdminTemplate(rest),
   });
 
 export const sendRefundApprovedEmailToStudent = ({ studentEmail, ...rest }) =>
   sendEmail({
     to: studentEmail,
-    subject: `Refund approved: Rs. ${Number(rest.refundAmount).toLocaleString("en-IN")} for ${rest.courseName}`,
+    subject: `Refund Approved — ₹${Number(rest.refundAmount).toLocaleString("en-IN")} for ${rest.courseName}`,
     html: refundApprovedStudentTemplate(rest),
   });
 
 export const sendRefundRejectedEmailToStudent = ({ studentEmail, ...rest }) =>
   sendEmail({
     to: studentEmail,
-    subject: `Update on your refund request: ${rest.courseName}`,
+    subject: `Refund Request Update — ${rest.courseName}`,
     html: refundRejectedStudentTemplate(rest),
   });
