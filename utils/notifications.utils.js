@@ -21,6 +21,7 @@ export const notifyEnrollment = (student, course) => {
   const courseUrl = `${process.env.CLIENT_URL}/student/learn/${course._id}`;
 
   sendEmail({
+    from: FROM.info,
     to: student.email,
     subject: `Enrollment confirmed: ${course.title}`,
     html: enrollmentConfirmationTemplate(student.name, course.title, courseUrl),

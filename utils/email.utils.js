@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
+const bg = "#1a1a2e";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GMAIL OAUTH TRANSPORT

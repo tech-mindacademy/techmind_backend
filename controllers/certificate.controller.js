@@ -4,6 +4,7 @@ import CertificateOrder from "../models/CertificateOrder.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import {
   sendEmail,
+  FROM,
   certificatePurchaseAdminTemplate,
   certificatePurchaseStudentTemplate,
 } from "../utils/email.utils.js";

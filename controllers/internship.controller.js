@@ -3,6 +3,7 @@ import InternshipApplication from "../models/InternshipApplication.model.js";
 import { asyncHandler, AppError } from "../middleware/error.middleware.js";
 import {
   sendEmail,
+  FROM,
   internshipAdminTemplate,
   internshipApplicantTemplate,
 } from "../utils/email.utils.js";
@@ -100,6 +101,7 @@ export const applyForInternship = asyncHandler(async (req, res, next) => {
   // ── Emails ─────────────────────────────────────────────────────────────────
   try {
   await sendEmail({
+    from: FROM.internship,
     to: process.env.SMTP_USER,
     subject: `New Internship Application: ${internship.title} at ${internship.company} from ${name}`,
     html: internshipAdminTemplate({
@@ -114,6 +116,7 @@ export const applyForInternship = asyncHandler(async (req, res, next) => {
 
 try {
   await sendEmail({
+    from: FROM.internship,
     to: email,
     subject: `Application Received: ${internship.title} at ${internship.company} - You Have Been Shortlisted`,
     html: internshipApplicantTemplate({ name, internship, application }),
