@@ -1,18 +1,19 @@
-import { google } from "googleapis";
+import { Resend } from "resend";
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GMAIL OAUTH TRANSPORT
 // ─────────────────────────────────────────────────────────────────────────────
 
-const oauth2Client = new google.auth.OAuth2(
-  process.env.GMAIL_CLIENT_ID,
-  process.env.GMAIL_CLIENT_SECRET,
-  "https://developers.google.com/oauthplayground",
-);
+// const oauth2Client = new google.auth.OAuth2(
+//   process.env.GMAIL_CLIENT_ID,
+//   process.env.GMAIL_CLIENT_SECRET,
+//   "https://developers.google.com/oauthplayground",
+// );
 
-oauth2Client.setCredentials({
-  refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-});
+// oauth2Client.setCredentials({
+//   refresh_token: process.env.GMAIL_REFRESH_TOKEN,
+// });
 
 export const sendEmail = async ({
   to,
