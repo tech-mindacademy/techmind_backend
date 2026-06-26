@@ -1,4 +1,4 @@
-import { sendEmail } from "./email.utils.js"; // your existing Gmail OAuth sender
+import { sendEmail, FROM } from "./email.utils.js"; // your existing Gmail OAuth sender
 
 // ─── Shared helpers (mirrors your email.utils.js style) ──────────────────────
 const wrap = (content) => `

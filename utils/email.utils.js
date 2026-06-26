@@ -14,6 +14,15 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 // oauth2Client.setCredentials({
 //   refresh_token: process.env.GMAIL_REFRESH_TOKEN,
 // });
+export const FROM = {
+  info:       "Tech Mind Academy <info@techmindacademy.in>",
+  support:    "TMA Support <support@techmindacademy.in>",
+  admin:      "TMA Admin <admin@techmindacademy.in>",
+  internship: "TMA Internships <internship@techmindacademy.in>",
+  hr:         "TMA HR <hr@techmindacademy.in>",
+  careers:    "TMA Careers <careers@techmindacademy.in>",
+  contact:    "TMA Contact <contact@techmindacademy.in>",
+};
 
 export const sendEmail = async ({
   to,
@@ -21,83 +30,28 @@ export const sendEmail = async ({
   html,
   text,
   attachments = [],
+  from = "Tech Mind Academy <info@techmindacademy.in>", // default sender
 }) => {
-  const gmail = google.gmail({ version: "v1", auth: oauth2Client });
+  const payload = {
+    from,
+    to: Array.isArray(to) ? to : [to],
+    subject,
+    html,
+    text: text || stripHtml(html),
+  };
 
-  const plainText = text || stripHtml(html);
-  const boundary = `boundary_${Date.now()}`;
-
-  let rawParts = [
-    `From: "Tech Mind Academy" <${process.env.SMTP_USER}>`,
-    `To: ${to}`,
-    `Subject: ${subject}`,
-    `MIME-Version: 1.0`,
-  ];
-
-  if (attachments.length === 0) {
-    rawParts.push(
-      `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    );
-    rawParts.push(``);
-    rawParts.push(`--${boundary}`);
-    rawParts.push(`Content-Type: text/plain; charset=UTF-8`);
-    rawParts.push(`Content-Transfer-Encoding: quoted-printable`);
-    rawParts.push(``);
-    rawParts.push(plainText);
-    rawParts.push(`--${boundary}`);
-    rawParts.push(`Content-Type: text/html; charset=UTF-8`);
-    rawParts.push(`Content-Transfer-Encoding: quoted-printable`);
-    rawParts.push(``);
-    rawParts.push(html);
-    rawParts.push(`--${boundary}--`);
-  } else {
-    const outerBoundary = `outer_${Date.now()}`;
-    rawParts.push(`Content-Type: multipart/mixed; boundary="${outerBoundary}"`);
-    rawParts.push(``);
-    rawParts.push(`--${outerBoundary}`);
-    rawParts.push(
-      `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    );
-    rawParts.push(``);
-    rawParts.push(`--${boundary}`);
-    rawParts.push(`Content-Type: text/plain; charset=UTF-8`);
-    rawParts.push(``);
-    rawParts.push(plainText);
-    rawParts.push(`--${boundary}`);
-    rawParts.push(`Content-Type: text/html; charset=UTF-8`);
-    rawParts.push(``);
-    rawParts.push(html);
-    rawParts.push(`--${boundary}--`);
-
-    for (const attachment of attachments) {
-      const fileData = Buffer.isBuffer(attachment.content)
-        ? attachment.content.toString("base64")
-        : Buffer.from(attachment.content).toString("base64");
-
-      rawParts.push(`--${outerBoundary}`);
-      rawParts.push(
-        `Content-Type: ${attachment.contentType || "application/octet-stream"}; name="${attachment.filename}"`,
-      );
-      rawParts.push(`Content-Transfer-Encoding: base64`);
-      rawParts.push(
-        `Content-Disposition: attachment; filename="${attachment.filename}"`,
-      );
-      rawParts.push(``);
-      rawParts.push(fileData.match(/.{1,76}/g).join("\r\n"));
-    }
-    rawParts.push(`--${outerBoundary}--`);
+  if (attachments.length > 0) {
+    payload.attachments = attachments.map((a) => ({
+      filename: a.filename,
+      content: Buffer.isBuffer(a.content)
+        ? a.content
+        : Buffer.from(a.content),
+    }));
   }
 
-  const raw = Buffer.from(rawParts.join("\r\n"))
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-
-  await gmail.users.messages.send({
-    userId: "me",
-    requestBody: { raw },
-  });
+  const { data, error } = await resend.emails.send(payload);
+  if (error) throw new Error(`Resend error: ${error.message}`);
+  return data;
 };
 
 const stripHtml = (html) =>

@@ -4,6 +4,7 @@
 
 import {
   sendEmail,
+  FROM,
   enrollmentConfirmationTemplate,
   creatorNewEnrollmentTemplate,
   assignmentGradedTemplate,
