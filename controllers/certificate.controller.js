@@ -205,6 +205,7 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
   // ── Notify admin ──
   try {
     await sendEmail({
+      from: FROM.info,
   to: process.env.SMTP_USER,
   subject: `Certificate Purchase: ${certOrder.name} — Rs. ${certOrder.amount} — ${certOrder.courseName}`,
   html: certificatePurchaseAdminTemplate({
@@ -220,6 +221,7 @@ const certLabel = {
 }[certOrder.certificateType] || "Certificate";
  
 await sendEmail({
+  from: FROM.info,
   to: certOrder.email,
   subject: pdfBytes
     ? `Your Certificate is Ready: ${certOrder.courseName}`
@@ -355,6 +357,7 @@ export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
 
   try {
     await sendEmail({
+      from: FROM.info,
   to:      email,
   subject: `Your ${certLabel}: ${courseName}`,
   html:    certificateAdminIssuedTemplate({ certOrder, certNumber, certLabel }),

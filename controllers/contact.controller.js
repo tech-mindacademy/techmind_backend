@@ -1,5 +1,5 @@
 import fetch from "node-fetch";
-import { sendEmail, contactFormTemplate, contactConfirmationTemplate } from "../utils/email.utils.js";
+import { sendEmail, FROM, contactFormTemplate, contactConfirmationTemplate } from "../utils/email.utils.js";
 
 const appendToSheet = async (name, email, message) => {
   const SHEET_URL = process.env.GOOGLE_SCRIPT_URL;
@@ -43,11 +43,13 @@ export const sendContactMessage = async (req, res) => {
     // Emails first — these are critical
     await Promise.all([
       sendEmail({
+        from: FROM.contact,
         to: process.env.SMTP_USER,
         subject: `📬New Contact Message from ${name}`,
         html: contactFormTemplate(name, email, message),
       }),
       sendEmail({
+        from: FROM.contact,
         to: email,
         subject: `We received your message, ${name}!`,
         html: contactConfirmationTemplate(name, message),
