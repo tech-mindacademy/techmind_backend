@@ -43,6 +43,7 @@ export const notifyEnrollment = (student, course) => {
 export const notifyAssignmentGraded = (student, course, assignmentTitle, grade, maxMarks, feedback) => {
   const courseUrl = `${process.env.CLIENT_URL}/student/learn/${course._id}`;
   sendEmail({
+    from: FROM.info,
     to: student.email,
     subject: `Assignment graded: ${grade}/${maxMarks} — ${assignmentTitle}`,
     html: assignmentGradedTemplate(student.name, course.title, assignmentTitle, grade, maxMarks, feedback, courseUrl),
@@ -55,6 +56,7 @@ export const notifyAssignmentGraded = (student, course, assignmentTitle, grade, 
 export const notifyAssignmentSubmitted = (creator, student, assignmentTitle, courseTitle) => {
   const submissionsUrl = `${process.env.CLIENT_URL}/creator/submissions`;
   sendEmail({
+    from: FROM.info,
     to: creator.email,
     subject: `New submission: ${assignmentTitle} — ${student.name}`,
     html: creatorSubmissionTemplate(creator.name, student.name, assignmentTitle, courseTitle, submissionsUrl),
@@ -67,6 +69,7 @@ export const notifyAssignmentSubmitted = (creator, student, assignmentTitle, cou
 export const notifyQuizPassed = (student, quizTitle, course, scorePercent, passMark) => {
   const courseUrl = `${process.env.CLIENT_URL}/student/learn/${course._id}`;
   sendEmail({
+    from: FROM.info,
     to: student.email,
     subject: `Quiz passed: ${quizTitle} — ${scorePercent}%`,
     html: quizPassedTemplate(student.name, quizTitle, course.title, scorePercent, passMark, courseUrl),
@@ -79,6 +82,7 @@ export const notifyQuizPassed = (student, quizTitle, course, scorePercent, passM
 export const notifyCourseCompleted = (student, course) => {
   const certUrl = `${process.env.CLIENT_URL}/student/certificate/${course._id}`;
   sendEmail({
+    from: FROM.info,
     to: student.email,
     subject: `Course completed: ${course.title} — Certificate ready`,
     html: courseCompletedTemplate(student.name, course.title, certUrl),

@@ -4,6 +4,7 @@ import User from "../models/User.model.js";
 import { sendTokens, generateAccessToken } from "../utils/jwt.utils.js";
 import {
   sendEmail,
+  FROM,
   verifyEmailTemplate,
   resetPasswordTemplate,
 } from "../utils/email.utils.js";
@@ -37,6 +38,7 @@ const creatorRequestStatus = "none"; // No approval needed on signup
   const verifyUrl = `${process.env.CLIENT_URL}/verify-email/${verifyToken}`;
   try {
     await sendEmail({
+      from: FROM.info,
       to: user.email,
       subject: "Verify your Tech Vidya account",
       html: verifyEmailTemplate(user.name, verifyUrl),
@@ -177,6 +179,7 @@ export const forgotPassword = asyncHandler(async (req, res, next) => {
   const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
   try {
     await sendEmail({
+      FROM: FROM.info,
       to: user.email,
       subject: "Tech Vidya Password Reset",
       html: resetPasswordTemplate(user.name, resetUrl),
