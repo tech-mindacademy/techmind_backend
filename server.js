@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 
 
 import connectDB from "./config/db.js";
+import { startInternshipPaymentPolling } from "./utils/razorpayPoll.utils.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 
 import authRoutes       from "./routes/auth.routes.js";
@@ -29,6 +30,7 @@ import contactRoutes from "./routes/contact.routes.js";
 import blogRoutes from "./routes/blog.routes.js";
 
 connectDB();
+startInternshipPaymentPolling();
 
 const app = express();
 app.set("trust proxy", 1);
