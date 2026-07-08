@@ -93,7 +93,7 @@ app.use("/api/blogs", blogRoutes);
 app.get("/api/health", (req, res) => {
   res.status(200).json({
     success: true,
-    message: "Tech Vidya API running",
+    message: "Tech Mind Academy API running",
     phase: "Phase 4 complete",
     timestamp: new Date().toISOString(),
   });
