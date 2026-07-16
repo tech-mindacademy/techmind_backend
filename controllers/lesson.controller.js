@@ -235,7 +235,7 @@ export const uploadLessonVideo = asyncHandler(async (req, res, next) => {
     message: "Video uploaded.",
     video: lesson.video,
   });
-  console.log("VIDEO FILE:", req.file);
+  // console.log("VIDEO FILE:", req.file);
 });
 
 // @route  DELETE /api/courses/:courseId/sections/:sectionId/lessons/:lessonId/video

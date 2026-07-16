@@ -108,8 +108,8 @@ export const createCheckoutSession = asyncHandler(async (req, res, next) => {
     studentEmail: req.user.email,
     discount: couponDiscount > 0 ? { saved: couponDiscount, code: couponCode } : null,
   });
-  console.log("[payment] KEY:", process.env.RAZORPAY_KEY_ID ?? "MISSING");
-console.log("[payment] SECRET:", process.env.RAZORPAY_KEY_SECRET ? "SET" : "MISSING");
+  // console.log("[payment] KEY:", process.env.RAZORPAY_KEY_ID ?? "MISSING");
+// console.log("[payment] SECRET:", process.env.RAZORPAY_KEY_SECRET ? "SET" : "MISSING");
 });
 
 // POST /api/payments/verify

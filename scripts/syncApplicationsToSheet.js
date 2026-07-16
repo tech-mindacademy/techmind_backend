@@ -14,7 +14,7 @@ const syncAll = async () => {
     const applications = await InternshipApplication.find()
       .populate("internship", "title company");
 
-    console.log(`📦 Found ${applications.length} applications to sync...`);
+    // console.log(`📦 Found ${applications.length} applications to sync...`);
 
     let success = 0;
     let failed = 0;
