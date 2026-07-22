@@ -77,7 +77,7 @@ app.use("/api/payments", paymentRoutes);
 
 if (process.env.NODE_ENV === "development") app.use(morgan("dev"));
 
-app.use("/api/auth",        authLimiter, authRoutes);
+app.use("/api/auth",        authRoutes);
 app.use("/api/courses",     courseRoutes);
 app.use("/api/enrollments", enrollmentRoutes);
 app.use("/api/quizzes",     quizRoutes);
