@@ -4,7 +4,7 @@ import cors from "cors";
 import helmet from "helmet";
 import cookieParser from "cookie-parser";
 import morgan from "morgan";
-import rateLimit from "express-rate-limit";
+import { globalLimiter } from "./middleware/rateLimiters.js";
 
 
 import connectDB from "./config/db.js";
@@ -49,19 +49,20 @@ app.use(cors({
 }));
 
 // server.js
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === "production" ? 200 : 2000,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// const generalLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: process.env.NODE_ENV === "production" ? 200 : 2000,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === "production" ? 20 : 200,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
+// const authLimiter = rateLimit({
+//   windowMs: 15 * 60 * 1000,
+//   max: process.env.NODE_ENV === "production" ? 20 : 200,
+//   standardHeaders: true,
+//   legacyHeaders: false,
+// });
+app.use(globalLimiter);
 app.set("etag", false);
 // Stripe webhook needs raw body — mount BEFORE express.json()
 // ✅ FIRST parse JSON

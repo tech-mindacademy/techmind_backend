@@ -12,6 +12,7 @@ import {
   getPendingReviews,   // ← add
   approveReview,       // ← add
 } from "../controllers/Review.controller.js";
+import { formLimiter } from "../middleware/rateLimiters.js";
 
 const router = express.Router();
 
@@ -62,7 +63,7 @@ router.get("/course/:courseId", getCourseReviews);
 router.use(protect);
 
 router.get("/my", getMyReviews);
-router.post("/", reviewRules, validate, createReview);
+router.post("/", formLimiter, reviewRules, validate, createReview);
 router.put("/:id", updateRules, validate, updateReview);
 router.delete("/:id", deleteReview);
 router.get(

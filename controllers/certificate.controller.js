@@ -135,7 +135,30 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
     return next(new AppError("Invalid payment verification data.", 400));
   }
 
-  // Verify signature
+  // Fetch the order FIRST
+  const existingOrder = await CertificateOrder.findById(certOrderId);
+  if (!existingOrder) {
+    return next(new AppError("Certificate order not found.", 404));
+  }
+
+  // ✅ Confirm this order actually corresponds to the razorpay_order_id being verified
+  if (existingOrder.razorpayOrderId !== razorpay_order_id) {
+    return next(
+      new AppError("Order mismatch. Payment verification failed.", 400),
+    );
+  }
+
+  // ✅ Idempotency: don't re-process an already-paid order
+  if (existingOrder.paymentStatus === "paid") {
+    return res.json({
+      success: true,
+      message: "Payment already verified.",
+      certificateNumber: existingOrder.certificateNumber,
+      certOrder: existingOrder,
+    });
+  }
+
+  // Verify signature (unchanged)
   const body = razorpay_order_id + "|" + razorpay_payment_id;
   const expectedSig = crypto
     .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
@@ -165,7 +188,8 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
     { new: true },
   );
 
-  if (!certOrder) return next(new AppError("Certificate order not found.", 404));
+  if (!certOrder)
+    return next(new AppError("Certificate order not found.", 404));
 
   let pdfBytes = null;
   try {
@@ -185,20 +209,22 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
 
   // ── Log to Sheet3 (paid purchases) ──
   logToSheet({
-    type:                  "certificate",
-    "Submitted At":        new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
-    "Certificate Number":  certNumber,
-    "Name":                certOrder.name,
-    "Email":               certOrder.email,
-    "Phone":               certOrder.phone,
-    "Course Name":         certOrder.courseName,
-    "Course Type":         certOrder.courseType,
-    "Start Date":          certOrder.startDate,
-    "Completion Date":     certOrder.completionDate,
-    "Certificate Type":    certOrder.certificateType,
-    "Amount":              certOrder.amount,
-    "Payment Status":      "paid",
-    "Razorpay Order ID":   razorpay_order_id,
+    type: "certificate",
+    "Submitted At": new Date().toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+    }),
+    "Certificate Number": certNumber,
+    Name: certOrder.name,
+    Email: certOrder.email,
+    Phone: certOrder.phone,
+    "Course Name": certOrder.courseName,
+    "Course Type": certOrder.courseType,
+    "Start Date": certOrder.startDate,
+    "Completion Date": certOrder.completionDate,
+    "Certificate Type": certOrder.certificateType,
+    Amount: certOrder.amount,
+    "Payment Status": "paid",
+    "Razorpay Order ID": razorpay_order_id,
     "Razorpay Payment ID": razorpay_payment_id,
   });
 
@@ -206,37 +232,45 @@ export const verifyCertificatePayment = asyncHandler(async (req, res, next) => {
   try {
     await sendEmail({
       from: FROM.info,
-  to: process.env.SMTP_USER,
-  subject: `Certificate Purchase: ${certOrder.name} — Rs. ${certOrder.amount} — ${certOrder.courseName}`,
-  html: certificatePurchaseAdminTemplate({
-    certOrder, certNumber, razorpay_order_id, razorpay_payment_id,
-  }),
-});
+      to: process.env.SMTP_USER,
+      subject: `Certificate Purchase: ${certOrder.name} — Rs. ${certOrder.amount} — ${certOrder.courseName}`,
+      html: certificatePurchaseAdminTemplate({
+        certOrder,
+        certNumber,
+        razorpay_order_id,
+        razorpay_payment_id,
+      }),
+    });
 
-    const safeName  = certOrder.name.replace(/\s+/g, "_");
-const certLabel = {
-  completion:    "Certificate of Completion",
-  excellence:    "Certificate of Excellence",
-  participation: "Certificate of Participation",
-}[certOrder.certificateType] || "Certificate";
- 
-await sendEmail({
-  from: FROM.info,
-  to: certOrder.email,
-  subject: pdfBytes
-    ? `Your Certificate is Ready: ${certOrder.courseName}`
-    : `Payment Confirmed: ${certOrder.courseName} Certificate Being Processed`,
-  html: certificatePurchaseStudentTemplate({
-    certOrder,
-    certNumber,
-    pdfAttached: !!pdfBytes,
-  }),
-  attachments: pdfBytes ? [{
-    filename:    `${safeName}_${certLabel.replace(/\s+/g, "_")}.pdf`,
-    content:     Buffer.from(pdfBytes),
-    contentType: "application/pdf",
-  }] : [],
-});
+    const safeName = certOrder.name.replace(/\s+/g, "_");
+    const certLabel =
+      {
+        completion: "Certificate of Completion",
+        excellence: "Certificate of Excellence",
+        participation: "Certificate of Participation",
+      }[certOrder.certificateType] || "Certificate";
+
+    await sendEmail({
+      from: FROM.info,
+      to: certOrder.email,
+      subject: pdfBytes
+        ? `Your Certificate is Ready: ${certOrder.courseName}`
+        : `Payment Confirmed: ${certOrder.courseName} Certificate Being Processed`,
+      html: certificatePurchaseStudentTemplate({
+        certOrder,
+        certNumber,
+        pdfAttached: !!pdfBytes,
+      }),
+      attachments: pdfBytes
+        ? [
+            {
+              filename: `${safeName}_${certLabel.replace(/\s+/g, "_")}.pdf`,
+              content: Buffer.from(pdfBytes),
+              contentType: "application/pdf",
+            },
+          ]
+        : [],
+    });
   } catch (err) {
     console.error("Email error after payment:", err.message);
   }
@@ -319,10 +353,10 @@ export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
   let pdfBytes;
   try {
     const fakeEnrollment = {
-      course:              { title: certOrder.courseName },
-      createdAt:           new Date(certOrder.startDate),
+      course: { title: certOrder.courseName },
+      createdAt: new Date(certOrder.startDate),
       certificateIssuedAt: new Date(certOrder.completionDate),
-      _id:                 certOrder._id,
+      _id: certOrder._id,
     };
     pdfBytes = await fillCertificate(fakeEnrollment, { name: certOrder.name });
     await CertificateOrder.findByIdAndUpdate(certOrder._id, {
@@ -335,38 +369,47 @@ export const adminIssueCertificate = asyncHandler(async (req, res, next) => {
 
   // ── Log to Sheet4 (admin-issued / free) ──
   logToSheet({
-    type:                 "admin_certificate",
-    "Issued At":          new Date().toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }),
+    type: "admin_certificate",
+    "Issued At": new Date().toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+    }),
     "Certificate Number": certNumber,
-    "Name":               certOrder.name,
-    "Email":              certOrder.email,
-    "Phone":              certOrder.phone,
-    "Course Name":        certOrder.courseName,
-    "Course Type":        certOrder.courseType,
-    "Start Date":         certOrder.startDate,
-    "Completion Date":    certOrder.completionDate,
-    "Certificate Type":   certOrder.certificateType,
+    Name: certOrder.name,
+    Email: certOrder.email,
+    Phone: certOrder.phone,
+    "Course Name": certOrder.courseName,
+    "Course Type": certOrder.courseType,
+    "Start Date": certOrder.startDate,
+    "Completion Date": certOrder.completionDate,
+    "Certificate Type": certOrder.certificateType,
   });
 
-  const certLabel = {
-  completion:    "Certificate of Completion",
-  excellence:    "Certificate of Excellence",
-  participation: "Certificate of Participation",
-}[certificateType] || "Certificate";
+  const certLabel =
+    {
+      completion: "Certificate of Completion",
+      excellence: "Certificate of Excellence",
+      participation: "Certificate of Participation",
+    }[certificateType] || "Certificate";
   const safeName = name.replace(/\s+/g, "_");
 
   try {
     await sendEmail({
       from: FROM.info,
-  to:      email,
-  subject: `Your ${certLabel}: ${courseName}`,
-  html:    certificateAdminIssuedTemplate({ certOrder, certNumber, certLabel }),
-  attachments: [{
-    filename:    `${safeName}_${certLabel.replace(/\s+/g, "_")}.pdf`,
-    content:     Buffer.from(pdfBytes),
-    contentType: "application/pdf",
-  }],
-});
+      to: email,
+      subject: `Your ${certLabel}: ${courseName}`,
+      html: certificateAdminIssuedTemplate({
+        certOrder,
+        certNumber,
+        certLabel,
+      }),
+      attachments: [
+        {
+          filename: `${safeName}_${certLabel.replace(/\s+/g, "_")}.pdf`,
+          content: Buffer.from(pdfBytes),
+          contentType: "application/pdf",
+        },
+      ],
+    });
   } catch (err) {
     console.error("Email delivery failed:", err.message);
   }

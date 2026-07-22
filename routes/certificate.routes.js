@@ -8,13 +8,14 @@ import {
   adminIssueCertificate,
 } from "../controllers/certificate.controller.js";
 import { protect, authorizeRoles } from "../middleware/auth.middleware.js";
+import { paymentLimiter } from "../middleware/rateLimiters.js";
 
 const router = express.Router();
 
 // ── Public ──────────────────────────────────────────────────────────────────
 router.get("/key", getRazorpayKey);
-router.post("/create-order", createCertificateOrder);
-router.post("/verify-payment", verifyCertificatePayment);
+router.post("/create-order", paymentLimiter, createCertificateOrder);
+router.post("/verify-payment", paymentLimiter, verifyCertificatePayment);
 
 // ── Admin ────────────────────────────────────────────────────────────────────
 router.get("/admin/orders", protect, authorizeRoles("admin"), getAllCertificateOrders);

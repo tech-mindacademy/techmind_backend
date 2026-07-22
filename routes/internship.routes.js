@@ -13,15 +13,16 @@ import {
 } from "../controllers/internship.controller.js";
 import { protect, authorizeRoles } from "../middleware/auth.middleware.js";
 import { updateApplicationStatus } from "../controllers/internship.controller.js";
+import { formLimiter } from "../middleware/rateLimiters.js";
 
 const router = express.Router();
 
 // ── Public ──────────────────────────────────────────────────────────────────
-router.post("/apply-static", applyStatic);
+router.post("/apply-static", formLimiter, applyStatic);
 router.get("/", getAllInternships);
 router.get("/:id", getInternshipById);
 // router.post("/apply-static", applyStatic);
-router.post("/:id/apply", applyForInternship);
+router.post("/:id/apply", formLimiter, applyForInternship);
 
 // ── Admin ────────────────────────────────────────────────────────────────────
 router.get("/admin/all", protect, authorizeRoles("admin"), getAllInternshipsAdmin);
