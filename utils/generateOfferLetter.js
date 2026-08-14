@@ -13,7 +13,7 @@ const PAGE_H = 842.25;
 // How much clear space (in points) to leave between the text baseline
 // and the underline itself. Increase this if descenders (g, y, j, p)
 // still look like they're touching the line.
-const GAP_ABOVE_LINE = 6;
+const GAP_ABOVE_LINE = 12;
 
 /**
  * Field coordinates measured precisely via pdfplumber.
@@ -108,21 +108,21 @@ export async function generateOfferLetter(data) {
   const page = pdfDoc.getPages()[0];
 
   // ── Date & ID (top header row) ─────────────────────────────────────────────
-  drawCentered(page, fontRegular, date,                FIELDS.date,      10);
-  drawCentered(page, fontRegular, id,                  FIELDS.id,        10);
+  drawCentered(page, fontRegular, date,                FIELDS.date,      10, [0.05, 0.05, 0.12], 11);
+  drawCentered(page, fontRegular, id,                  FIELDS.id,        10, [0.05, 0.05, 0.12], 11);
 
   // ── "To," name block ────────────────────────────────────────────────────────
-  drawCentered(page, fontBold,    name,                FIELDS.toName,    11);
+  drawCentered(page, fontBold,    name,                FIELDS.toName,    11, [0.05, 0.05, 0.12], 13);
 
   // ── "Dear ____" – first name only ──────────────────────────────────────────
-  drawCentered(page, fontBold,    name.split(" ")[0],  FIELDS.dear,      11);
+  drawCentered(page, fontBold,    name.split(" ")[0],  FIELDS.dear,      11, [0.05, 0.05, 0.12], 13);
 
   // ── Body fields ─────────────────────────────────────────────────────────────
-  drawCentered(page, fontBold,    position,            FIELDS.position,  10);
-  drawCentered(page, fontBold,    company,             FIELDS.company,   10);
-  drawCentered(page, fontBold,    role,                FIELDS.role,      11);
-  drawCentered(page, fontBold,    duration,            FIELDS.duration,  11);
-  drawCentered(page, fontBold,    startDate,           FIELDS.startDate, 11);
+  drawCentered(page, fontBold,    position,            FIELDS.position,  10, [0.05, 0.05, 0.12], 11);
+  drawCentered(page, fontBold,    company,             FIELDS.company,   10, [0.05, 0.05, 0.12], 11);
+  drawCentered(page, fontBold,    role,                FIELDS.role,      11, [0.05, 0.05, 0.12], 13);
+  drawCentered(page, fontBold,    duration,            FIELDS.duration,  11, [0.05, 0.05, 0.12], 13);
+  drawCentered(page, fontBold,    startDate,           FIELDS.startDate, 11, [0.05, 0.05, 0.12], 13);
 
   const pdfBytes = await pdfDoc.save();
   return Buffer.from(pdfBytes);
