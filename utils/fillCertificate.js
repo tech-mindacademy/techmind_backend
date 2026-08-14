@@ -11,15 +11,22 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PAGE_H = 595.5;
 const rl = (plumberTop) => PAGE_H - plumberTop;
 
-// Underline boundaries extracted directly from the PDF vector data.
-// Each entry is [x0, x1] of the blank line the text should be centred on.
+// How much clear space (in points) to leave between the text baseline
+// and the underline itself.
+const GAP_ABOVE_LINE = 6;
+
+// Underline boundaries measured directly from the real template PDF
+// (pdfplumber page.lines / page.rects — the actual drawn underline
+// vectors, not estimates). x0/x1 = horizontal span, top = the
+// underline's own vertical position in pdfplumber top-down coords.
+// Note: this template has no "parent name / S/o/D/o" line — that field
+// was a leftover from a different template and has been removed.
 const LINES = {
-  studentName : [228.20, 598.36], // long centre line under "PROUDLY PRESENTED TO"
-  parentName  : [158.93, 422.10], // after "S/o/D/o"
-  courseName  : [109.80, 476.30], // after "of"
-  fromDate    : [529.45, 743.55], // after "from"
-  toDate      : [110.66, 324.77], // after "to"
-  refNo       : [725.19, 819.40], // after "Ref No."
+  studentName : { x0: 210.7, x1: 445.4, top: 226.1 }, // blank after "This is to certify that"
+  courseName  : { x0:  40.3, x1: 303.5, top: 261.4 }, // blank before "at Tech Mind Academy"
+  fromDate    : { x0: 682.1, x1: 798.6, top: 261.3 }, // blank after "during the tenure of"
+  toDate      : { x0:  68.4, x1: 184.9, top: 293.8 }, // blank after "to"
+  refNo       : { x0: 698.7, x1: 792.9, top: 178.7 }, // blank after "Ref No."
 };
 
 const TEMPLATE_PATH = path.join(
@@ -61,34 +68,36 @@ export async function fillCertificate(enrollment, student) {
   const INK     = rgb(0.05, 0.05, 0.05);
 
   /**
-   * Draw text centred within the bounds of a named underline.
+   * Draw text centred within the bounds of a named underline, with the
+   * baseline sitting GAP_ABOVE_LINE points above the underline's own
+   * y-position so text never touches (or is bisected by) the line.
+   *
    * @param {string} field  - key in LINES
    * @param {string} text   - text to draw
-   * @param {number} plumberTop - vertical position (pdfplumber top coord)
+   * @param {number} plumberTop - vertical position of the underline (pdfplumber top coord)
    * @param {object} opts
    */
-  const drawCentred = (field, text, plumberTop, { font = regular, size = 15, color = INK } = {}) => {
-    const [x0, x1]   = LINES[field];
-    const textWidth   = font.widthOfTextAtSize(text, size);
-    const x           = (x0 + x1) / 2 - textWidth / 2;
-    const y           = rl(plumberTop);
-    page.drawText(String(text), { x, y, size, font, color });
+  const drawCentred = (field, text, { font = regular, size = 15, color = INK, gap = GAP_ABOVE_LINE } = {}) => {
+    const { x0, x1, top } = LINES[field];
+    const maxWidth = x1 - x0 - 4; // 2pt padding each side
+    let fontSize = size;
+
+    // Auto-shrink if text overflows the blank
+    while (font.widthOfTextAtSize(String(text), fontSize) > maxWidth && fontSize > 8) {
+      fontSize -= 0.5;
+    }
+
+    const textWidth = font.widthOfTextAtSize(String(text), fontSize);
+    const x = (x0 + x1) / 2 - textWidth / 2;
+    const y = rl(top) + gap; // shift baseline up off the line
+    page.drawText(String(text), { x, y, size: fontSize, font, color });
   };
 
-  // Student name — plumber top ≈ 242
-  drawCentred("studentName", fields.studentName, 242, { font: bold, size: 26 });
-
-  // Course name — plumber top ≈ 342
-  drawCentred("courseName", fields.courseName, 338);
-
-  // From date — plumber top ≈ 341
-  drawCentred("fromDate", fields.fromDate, 338);
-
-  // To date — plumber top ≈ 376
-  drawCentred("toDate", fields.toDate, 368);
-
-  // Ref No — plumber top ≈ 192
-  drawCentred("refNo", fields.refNo, 188, { size: 11 });
+  drawCentred("studentName", fields.studentName, { font: bold, size: 22 });
+  drawCentred("courseName",  fields.courseName,  { size: 12 });
+  drawCentred("fromDate",    fields.fromDate,    { size: 12 });
+  drawCentred("toDate",      fields.toDate,      { size: 12 });
+  drawCentred("refNo",       fields.refNo,       { size: 11 });
 
   return pdfDoc.save();
 }
