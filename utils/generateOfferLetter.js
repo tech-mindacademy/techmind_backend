@@ -10,11 +10,17 @@ const __dirname = path.dirname(__filename);
 // ── Page height (pdf-lib uses bottom-up y, pdfplumber uses top-down) ─────────
 const PAGE_H = 842.25;
 
+// How much clear space (in points) to leave between the text baseline
+// and the underline itself. Increase this if descenders (g, y, j, p)
+// still look like they're touching the line.
+const GAP_ABOVE_LINE = 6;
+
 /**
  * Field coordinates measured precisely via pdfplumber.
- * xStart / xEnd  → horizontal span of the blank line
- * y              → text baseline in pdf-lib bottom-up coords
- *                  = PAGE_H - plumber_bottom + 1
+ * xStart / xEnd    → horizontal span of the blank line
+ * plumberBottom     → the underline's own y position, in pdfplumber's
+ *                      bottom-up-from-page-bottom coords (i.e. what used
+ *                      to be baked into `y` before the gap was separated out)
  *
  * For "date": blank starts after "Date:" label  → xStart trimmed to 170
  * For "id":   blank starts after "ID:" label    → xStart trimmed to 432
@@ -22,22 +28,24 @@ const PAGE_H = 842.25;
  * For "duration": blank starts after "Duration:"→ xStart trimmed to 130
  */
 const FIELDS = {
-  date:      { xStart: 170.0, xEnd: 294.0, y: PAGE_H - 121.9 + 4 },
-  id:        { xStart: 432.0, xEnd: 533.0, y: PAGE_H - 124.4 + 4 },
-  toName:    { xStart:  32.8, xEnd: 251.0, y: PAGE_H - 243.2 + 4 },
-  dear:      { xStart:  64.0, xEnd: 167.9, y: PAGE_H - 306.5 + 4 },
-  position:  { xStart: 324.0, xEnd: 530.1, y: PAGE_H - 334.5 + 4 },
-  company:   { xStart:  93.5, xEnd: 245.0, y: PAGE_H - 354.0 + 4 },
-  role:      { xStart:  83.7, xEnd: 217.1, y: PAGE_H - 425.4 + 4 },
-  duration:  { xStart: 130.0, xEnd: 267.6, y: PAGE_H - 444.9 + 4 },
-  startDate: { xStart: 123.3, xEnd: 256.6, y: PAGE_H - 483.9 + 4 },
+  date:      { xStart: 170.0, xEnd: 294.0, plumberBottom: 121.9 },
+  id:        { xStart: 432.0, xEnd: 533.0, plumberBottom: 124.4 },
+  toName:    { xStart:  32.8, xEnd: 251.0, plumberBottom: 243.2 },
+  dear:      { xStart:  64.0, xEnd: 167.9, plumberBottom: 306.5 },
+  position:  { xStart: 324.0, xEnd: 530.1, plumberBottom: 334.5 },
+  company:   { xStart:  93.5, xEnd: 245.0, plumberBottom: 354.0 },
+  role:      { xStart:  83.7, xEnd: 217.1, plumberBottom: 425.4 },
+  duration:  { xStart: 130.0, xEnd: 267.6, plumberBottom: 444.9 },
+  startDate: { xStart: 123.3, xEnd: 256.6, plumberBottom: 483.9 },
 };
 
 /**
- * Draws text horizontally centered within a blank-line field.
- * Clamps font size down automatically if the text is too wide to fit.
+ * Draws text horizontally centered within a blank-line field, with the
+ * baseline sitting `gap` points above the underline so text never touches
+ * (or gets bisected by) the line. Clamps font size down automatically if
+ * the text is too wide to fit.
  */
-function drawCentered(page, font, text, field, size = 11, color = [0.05, 0.05, 0.12]) {
+function drawCentered(page, font, text, field, size = 11, color = [0.05, 0.05, 0.12], gap = GAP_ABOVE_LINE) {
   const maxWidth = field.xEnd - field.xStart - 4; // 2pt padding each side
   let fontSize = size;
 
@@ -49,10 +57,11 @@ function drawCentered(page, font, text, field, size = 11, color = [0.05, 0.05, 0
   const textWidth = font.widthOfTextAtSize(text, fontSize);
   const centerX = (field.xStart + field.xEnd) / 2;
   const x = centerX - textWidth / 2;
+  const y = PAGE_H - field.plumberBottom + gap; // shift baseline up off the line
 
   page.drawText(text, {
     x,
-    y: field.y,
+    y,
     size: fontSize,
     font,
     color: rgb(...color),
@@ -88,9 +97,6 @@ export async function generateOfferLetter(data) {
     id,
     templatePath = path.join(__dirname, "../assets/offer_letter_template.pdf"),
   } = data;
-  // console.log("__dirname:", __dirname);
-  // console.log("Template path:", templatePath);
-  // console.log("File exists:", fs.existsSync(templatePath));
 
   const templateBytes = fs.readFileSync(templatePath);
   const pdfDoc = await PDFDocument.load(templateBytes);
