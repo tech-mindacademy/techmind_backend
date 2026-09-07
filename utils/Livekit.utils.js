@@ -1,4 +1,4 @@
-import { AccessToken, EgressClient, RoomServiceClient } from "livekit-server-sdk";
+import { AccessToken, EgressClient, RoomServiceClient, TrackSource } from "livekit-server-sdk";
 import { AppError } from "../middleware/error.middleware.js";
 
 // ─── Env guard ─────────────────────────────────────────────────────────────
@@ -81,8 +81,8 @@ export async function createLiveKitToken({
     canPublishData: true, // needed for chat / raise-hand data messages
     canSubscribe: true,
     canPublishSources: isHost || allowScreenShare
-      ? ["camera", "microphone", "screen_share", "screen_share_audio"]
-      : ["camera", "microphone"],
+      ? [TrackSource.CAMERA, TrackSource.MICROPHONE, TrackSource.SCREEN_SHARE, TrackSource.SCREEN_SHARE_AUDIO]
+      : [TrackSource.CAMERA, TrackSource.MICROPHONE],
     roomAdmin: isHost, // lets host mute/remove participants via server API if needed
     roomRecord: isHost,
   });
