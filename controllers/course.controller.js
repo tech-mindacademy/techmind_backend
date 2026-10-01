@@ -578,7 +578,7 @@ export const proxyLessonVideo = asyncHandler(async (req, res, next) => {
     return next(new AppError("Video URL generation failed.", 500));
   }
 
-  console.log("[proxyLessonVideo] signedUrl:", signedUrl.slice(0, 100));
+  // console.log("[proxyLessonVideo] signedUrl:", signedUrl.slice(0, 100));
 
   // ── 6. Fetch master manifest from Cloudinary ────────────────────────────────
   const cloudinaryRes = await fetch(signedUrl);
@@ -664,8 +664,8 @@ if (!isM3u8Url) {
   }
 }
 
-  console.log("[proxySegment] fetching:", segmentUrl.slice(0, 120));
-  console.log("[proxySegment] Range header:", fetchHeaders["Range"] || "none");
+  // console.log("[proxySegment] fetching:", segmentUrl.slice(0, 120));
+  // console.log("[proxySegment] Range header:", fetchHeaders["Range"] || "none");
 
   const segmentRes = await fetch(segmentUrl, { headers: fetchHeaders });
 
@@ -765,10 +765,10 @@ if (!isM3u8Url) {
     const val = segmentRes.headers.get(h);
     if (val) responseHeaders[h] = val;
   }
-  console.log("[proxySegment .ts] status:", segmentRes.status);
-  console.log("[proxySegment .ts] Range sent:", fetchHeaders["Range"] || "none");
-  console.log("[proxySegment .ts] _br param:", req.query._br || "none");
-  console.log("[proxySegment .ts] response headers:", Object.fromEntries(segmentRes.headers.entries()));
+  // console.log("[proxySegment .ts] status:", segmentRes.status);
+  // console.log("[proxySegment .ts] Range sent:", fetchHeaders["Range"] || "none");
+  // console.log("[proxySegment .ts] _br param:", req.query._br || "none");
+  // console.log("[proxySegment .ts] response headers:", Object.fromEntries(segmentRes.headers.entries()));
 
   res.status(segmentRes.status).set(responseHeaders);
   segmentRes.body.pipe(res);

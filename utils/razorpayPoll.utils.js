@@ -41,11 +41,11 @@ async function pollInternshipPayments() {
         const json = await res.json();
 
         alreadyProcessed.add(payment.id);
-        console.log(
-          json.matched
-            ? `✅ Matched & marked Paid: ${email} (${payment.id})`
-            : `⚠️ No unpaid row found for ${email} (${payment.id}) — check manually`
-        );
+        // console.log(
+        //   json.matched
+        //     ? `✅ Matched & marked Paid: ${email} (${payment.id})`
+        //     : `⚠️ No unpaid row found for ${email} (${payment.id}) — check manually`
+        // );
       } catch (sheetErr) {
         console.error(`Sheet update failed for ${payment.id}:`, sheetErr.message);
       }

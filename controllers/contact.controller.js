@@ -26,7 +26,7 @@ const appendToSheet = async (name, email, message) => {
     });
 
     const text = await response.text();
-    console.log("Sheet response:", text); // ← will show success/error from Apps Script
+    // console.log("Sheet response:", text); // ← will show success/error from Apps Script
   } catch (err) {
     console.error("Google Sheet append failed:", err.message);
   }

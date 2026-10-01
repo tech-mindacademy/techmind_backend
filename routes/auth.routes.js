@@ -11,6 +11,8 @@ import {
   updateProfile,
   changePassword,
 } from "../controllers/auth.controller.js";
+import { authLimiter, emailLimiter } from "../middleware/rateLimiters.js";
+
 import { protect } from "../middleware/auth.middleware.js";
 import { body } from "express-validator";
 import { validate } from "../middleware/validate.middleware.js";
@@ -37,12 +39,12 @@ const loginRules = [
 ];
 
 // ─── Public routes ────────────────────────────────────────────────────────────
-router.post("/register", registerRules, validate, register);
-router.post("/login", loginRules, validate, login);
+router.post("/register", authLimiter, registerRules, validate, register);
+router.post("/login", authLimiter, loginRules, validate, login);
 router.get("/verify-email/:token", verifyEmail);
-router.post("/refresh-token", refreshToken);
-router.post("/forgot-password", forgotPassword);
-router.post("/reset-password/:token", resetPassword);
+router.post("/refresh-token", authLimiter, refreshToken);
+router.post("/forgot-password", emailLimiter, forgotPassword);
+router.post("/reset-password/:token", emailLimiter, resetPassword);
 
 // ─── Private routes ───────────────────────────────────────────────────────────
 router.post("/logout", logout);
