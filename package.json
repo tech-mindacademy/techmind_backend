@@ -1,7 +1,7 @@
 {
   "name": "lms-backend",
   "version": "1.0.0",
-  "description": "Tech Vidya LMS Backend",
+  "description": "Tech Mind Academy LMS Backend",
   "main": "server.js",
   "type": "module",
   "scripts": {

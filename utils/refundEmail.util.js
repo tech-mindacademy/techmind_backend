@@ -11,14 +11,14 @@ const wrap = (content) => `
       <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e2e8f0">
         <!-- Header -->
         <tr><td style="background:linear-gradient(135deg,#4f46e5,#7c3aed);padding:28px 32px">
-          <p style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.3px">Tech Vidya</p>
+          <p style="margin:0;font-size:22px;font-weight:700;color:#fff;letter-spacing:-0.3px">Tech Mind Academy</p>
         </td></tr>
         <!-- Body -->
         <tr><td style="padding:32px">${content}</td></tr>
         <!-- Footer -->
         <tr><td style="padding:20px 32px;background:#f8fafc;border-top:1px solid #e2e8f0">
           <p style="margin:0;font-size:12px;color:#94a3b8;text-align:center">
-            © ${new Date().getFullYear()} Tech Vidya. You're receiving this because you have an account with us.
+            © ${new Date().getFullYear()} Tech Mind Academy. You're receiving this because you have an account with us.
           </p>
         </td></tr>
       </table>
@@ -158,10 +158,10 @@ const refundApprovedStudentTemplate = ({
     "info"
   )}
 
-  ${p(`Your access to <strong>${courseName}</strong> has been removed. We hope to see you back on Tech Vidya for your next learning journey! 🚀`)}
+  ${p(`Your access to <strong>${courseName}</strong> has been removed. We hope to see you back on Tech Mind Academy for your next learning journey! 🚀`)}
 
   ${btn("Explore More Courses", `${process.env.CLIENT_URL}/courses`)}
-  ${small("Thank you for giving Tech Vidya a try. We'd love to have you back.")}
+  ${small("Thank you for giving Tech Mind Academy a try. We'd love to have you back.")}
 `);
 
 // ─────────────────────────────────────────────────────────────────────────────

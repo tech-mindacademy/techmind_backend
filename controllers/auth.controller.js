@@ -40,7 +40,7 @@ const creatorRequestStatus = "none"; // No approval needed on signup
     await sendEmail({
       from: FROM.info,
       to: user.email,
-      subject: "Verify your Tech Vidya account",
+      subject: "Verify your Tech Mind Academy account",
       html: verifyEmailTemplate(user.name, verifyUrl),
     });
   } catch (err) {
@@ -181,7 +181,7 @@ export const forgotPassword = asyncHandler(async (req, res, next) => {
     await sendEmail({
       FROM: FROM.info,
       to: user.email,
-      subject: "Tech Vidya Password Reset",
+      subject: "Tech Mind Academy Password Reset",
       html: resetPasswordTemplate(user.name, resetUrl),
     });
   } catch (err) {

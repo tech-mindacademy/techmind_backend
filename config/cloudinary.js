@@ -15,7 +15,7 @@ cloudinary.config({
 const videoStorage = new CloudinaryStorage({
   cloudinary,
   params: async (req, file) => ({
-    folder:           "techvidya/videos",
+    folder:           "techmind/videos",
     resource_type:    "video",
     type:             "authenticated",
     allowed_formats:  ["mp4", "mov", "avi", "mkv", "webm"],
@@ -30,7 +30,7 @@ const videoStorage = new CloudinaryStorage({
 const pdfStorage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder:          "techvidya/notes",
+    folder:          "techmind/notes",
     resource_type:   "raw",
     allowed_formats: ["pdf", "doc", "docx", "ppt", "pptx"],
   },
@@ -40,7 +40,7 @@ const pdfStorage = new CloudinaryStorage({
 const imageStorage = new CloudinaryStorage({
   cloudinary,
   params: {
-    folder:          "techvidya/images",
+    folder:          "techmind/images",
     resource_type:   "image",
     allowed_formats: ["jpg", "jpeg", "png", "webp"],
     transformation:  [{ width: 1280, height: 720, crop: "limit", quality: "auto" }],
@@ -51,7 +51,7 @@ const imageStorage = new CloudinaryStorage({
 const assignmentStorage = new CloudinaryStorage({
   cloudinary,
   params: (req, file) => ({
-    folder:          "techvidya/assignments",
+    folder:          "techmind/assignments",
     resource_type:   file.mimetype.startsWith("video/") ? "video" : "raw",
     type:            file.mimetype.startsWith("video/") ? "authenticated" : "upload",
     allowed_formats: ["pdf", "doc", "docx", "zip", "png", "jpg", "jpeg", "mp4"],

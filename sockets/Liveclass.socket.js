@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
-import LiveClass from "../models/LiveClass.model.js";
-import LiveClassRegistration from "../models/LiveClassRegistration.model.js";
+import LiveClass from "../models/Liveclass.model.js";
+import LiveClassRegistration from "../models/Liveclassregistration.model.js";
 
 // In-memory room registry. roomId -> { creatorSocketId, students: Map(studentId -> socketId) }
 // This is fine for a single Node instance. If you scale to multiple instances,
