@@ -8,7 +8,7 @@ import { globalLimiter } from "./middleware/rateLimiters.js";
 
 import connectDB from "./config/db.js";
 import { errorHandler } from "./middleware/error.middleware.js";
-import { razorpayWebhook } from "./controllers/razorpayWebhook.controller.js";
+import { razorpayWebhook } from "./controllers/razorpaywebhook.controller.js";
 
 import authRoutes       from "./routes/auth.routes.js";
 import courseRoutes     from "./routes/course.routes.js";
