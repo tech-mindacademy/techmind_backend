@@ -6,6 +6,7 @@ import Application from "../models/IndustrialTrainingApplication.model.js";
 const secret = "webhook-test-secret";
 process.env.RESEND_API_KEY ||= "re_test_key";
 const { razorpayWebhook } = await import("../controllers/industrialTraining.controller.js");
+const { razorpayWebhook: accountWebhook } = await import("../controllers/razorpaywebhook.controller.js");
 const originalFindOneAndUpdate = Application.findOneAndUpdate;
 const originalFindOne = Application.findOne;
 const originalUpdateOne = Application.updateOne;
@@ -78,6 +79,22 @@ test("valid paid event atomically records payment and advances application", asy
   assert.equal(update.$set["payment.method"], "upi");
   assert.equal(update.$set.status, "PAID");
   assert.ok(update.$set["payment.paidAt"] instanceof Date);
+});
+
+test("account-wide webhook endpoint handler accepts industrial-training payment links", async () => {
+  let update;
+  Application.findOneAndUpdate = async (_query, updateDocument) => {
+    update = updateDocument;
+    return { _id: "application-id" };
+  };
+  const { req, res } = makeRequest(paidEvent());
+
+  await accountWebhook(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.received, true);
+  assert.equal(update.$set["payment.status"], "paid");
+  assert.equal(update.$set.status, "PAID");
 });
 
 test("invalid signatures are rejected without touching the application", async () => {

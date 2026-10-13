@@ -50,7 +50,11 @@ app.use(cors({
 
 app.use(globalLimiter);
 app.set("etag", false);
-app.post("/api/webhooks/razorpay", express.raw({ type: "application/json", limit: "1mb" }), razorpayWebhook);
+app.post(
+  "/api/webhooks/razorpay",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  razorpayWebhook
+);
 app.post(
   "/api/industrial-training/payment/webhook",
   express.raw({ type: "application/json", limit: "1mb" }),
