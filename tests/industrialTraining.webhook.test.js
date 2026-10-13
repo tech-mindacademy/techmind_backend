@@ -56,6 +56,20 @@ const paidEvent = (amount = 125000) => JSON.stringify({
   },
 });
 
+const capturedPaymentEvent = (amount = 125000) => JSON.stringify({
+  event: "payment.captured",
+  payload: {
+    payment: {
+      entity: {
+        id: "pay_test",
+        method: "upi",
+        amount,
+        payment_link_id: "plink_test",
+      },
+    },
+  },
+});
+
 test("valid paid event atomically records payment and advances application", async () => {
   let query;
   let update;
@@ -94,6 +108,25 @@ test("account-wide webhook endpoint handler accepts industrial-training payment 
   assert.equal(res.statusCode, 200);
   assert.equal(res.body.received, true);
   assert.equal(update.$set["payment.status"], "paid");
+  assert.equal(update.$set.status, "PAID");
+});
+
+test("payment.captured event also verifies a linked industrial-training payment", async () => {
+  let query;
+  let update;
+  Application.findOneAndUpdate = async (...args) => {
+    [query, update] = args;
+    return { _id: "application-id" };
+  };
+  const { req, res } = makeRequest(capturedPaymentEvent());
+
+  await razorpayWebhook(req, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.body.received, true);
+  assert.equal(query["payment.linkId"], "plink_test");
+  assert.equal(query["payment.amount"], 125000);
+  assert.equal(update.$set["payment.paymentId"], "pay_test");
   assert.equal(update.$set.status, "PAID");
 });
 

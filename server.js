@@ -48,7 +48,6 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(globalLimiter);
 app.set("etag", false);
 app.post(
   "/api/webhooks/razorpay",
@@ -60,6 +59,8 @@ app.post(
   express.raw({ type: "application/json", limit: "1mb" }),
   industrialTrainingRazorpayWebhook
 );
+
+app.use(globalLimiter);
 app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());

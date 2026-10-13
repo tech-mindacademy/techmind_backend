@@ -306,16 +306,26 @@ export const razorpayWebhook = async (req, res) => {
   const event = body?.event;
   const payload = body?.payload;
   const link = payload?.payment_link?.entity;
-  if (!link?.id) return res.json({ received: true });
+  const payment = payload?.payment?.entity;
+  const linkId = link?.id || (event === "payment.captured" ? payment?.payment_link_id : null);
+  if (!linkId) return res.json({ received: true });
 
   try {
-    if (event === "payment_link.paid") {
-      const payment = payload.payment?.entity;
+    if (
+      event === "payment_link.paid" ||
+      (event === "payment.captured" && payment?.payment_link_id)
+    ) {
+      const amountPaid = link?.amount_paid ?? payment?.amount;
+      if (!Number.isSafeInteger(amountPaid) || amountPaid < 1) {
+        console.error(`[industrial-training webhook] missing/invalid paid amount for link ${linkId}`);
+        return res.status(400).json({ success: false, message: "Invalid payment amount." });
+      }
+
       const updated = await Application.findOneAndUpdate(
         {
-          "payment.linkId": link.id,
+          "payment.linkId": linkId,
           "payment.status": { $ne: "paid" },
-          "payment.amount": link.amount_paid,
+          "payment.amount": amountPaid,
         },
         {
           $set: {
@@ -330,10 +340,10 @@ export const razorpayWebhook = async (req, res) => {
       );
 
       if (!updated) {
-        const existing = await Application.findOne({ "payment.linkId": link.id }).select("payment");
+        const existing = await Application.findOne({ "payment.linkId": linkId }).select("payment");
         if (existing && existing.payment.status !== "paid") {
           console.error(
-            `Razorpay amount mismatch for link ${link.id}: paid ${link.amount_paid}, expected ${existing.payment.amount}`
+            `Razorpay amount mismatch for link ${linkId}: paid ${amountPaid}, expected ${existing.payment.amount}`
           );
         }
       }
@@ -341,7 +351,7 @@ export const razorpayWebhook = async (req, res) => {
       const paymentStatus = event === "payment_link.expired" ? "expired" : "cancelled";
       const transitioned = await Application.updateOne(
         {
-          "payment.linkId": link.id,
+          "payment.linkId": linkId,
           "payment.status": "link_sent",
           status: "PAYMENT_PENDING",
         },
@@ -349,7 +359,7 @@ export const razorpayWebhook = async (req, res) => {
       );
       if (transitioned.matchedCount === 0) {
         await Application.updateOne(
-          { "payment.linkId": link.id, "payment.status": "link_sent" },
+          { "payment.linkId": linkId, "payment.status": "link_sent" },
           { $set: { "payment.status": paymentStatus } }
         );
       }
