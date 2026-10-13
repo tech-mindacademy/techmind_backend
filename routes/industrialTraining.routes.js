@@ -8,7 +8,6 @@ import {
   updateStatus,
   sendPaymentLink,
   sendCredentials,
-  razorpayWebhook,
 } from "../controllers/industrialTraining.controller.js";
 import { protect, optionalAuth, authorizeRoles } from "../middleware/auth.middleware.js";
 import { formLimiter } from "../middleware/rateLimiters.js";
@@ -44,7 +43,6 @@ const applyRules = [
 ];
 
 router.post("/apply", formLimiter, optionalAuth, applyRules, validate, apply);
-router.post("/payment/webhook", razorpayWebhook);
 router.get("/my-access", protect, getMyAccess);
 
 router.get("/applications", ...admin, listApplications);

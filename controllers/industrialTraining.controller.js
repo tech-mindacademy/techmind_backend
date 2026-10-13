@@ -275,29 +275,42 @@ export const sendPaymentLink = asyncHandler(async (req, res, next) => {
 });
 
 // @route POST /api/industrial-training/payment/webhook   (Razorpay -> server)
-// Needs the raw request body for signature verification (see server.js).
+// Mounted with express.raw() before express.json() in server.js.
 export const razorpayWebhook = async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-  const signature = req.get("x-razorpay-signature");
-  if (!secret || !signature || !req.rawBody) {
-    return res.status(400).json({ success: false });
+  if (!secret) {
+    console.error("[industrial-training webhook] RAZORPAY_WEBHOOK_SECRET is not set");
+    return res.status(503).json({ success: false });
+  }
+  if (!Buffer.isBuffer(req.body)) {
+    return res.status(400).json({ success: false, message: "Expected raw body." });
   }
 
-  const expected = crypto.createHmac("sha256", secret).update(req.rawBody).digest("hex");
-  const valid =
-    expected.length === signature.length &&
-    crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
-  if (!valid) return res.status(400).json({ success: false });
+  const signature = req.get("x-razorpay-signature");
+  const signatureBytes =
+    typeof signature === "string" && /^[a-f\d]{64}$/i.test(signature)
+      ? Buffer.from(signature, "hex")
+      : null;
+  const expected = crypto.createHmac("sha256", secret).update(req.body).digest();
+  if (!signatureBytes || !crypto.timingSafeEqual(expected, signatureBytes)) {
+    return res.status(400).json({ success: false, message: "Invalid signature." });
+  }
 
-  const { event, payload } = req.body;
+  let body;
+  try {
+    body = JSON.parse(req.body.toString("utf8"));
+  } catch {
+    return res.status(400).json({ success: false, message: "Invalid payload." });
+  }
+
+  const event = body?.event;
+  const payload = body?.payload;
   const link = payload?.payment_link?.entity;
   if (!link?.id) return res.json({ received: true });
 
   try {
     if (event === "payment_link.paid") {
       const payment = payload.payment?.entity;
-
-      // Filtering on payment.status makes repeated deliveries a no-op.
       const updated = await Application.findOneAndUpdate(
         {
           "payment.linkId": link.id,
@@ -310,17 +323,13 @@ export const razorpayWebhook = async (req, res) => {
             "payment.paymentId": payment?.id,
             "payment.method": payment?.method,
             "payment.paidAt": new Date(),
+            status: "PAID",
           },
         },
         { new: true }
       );
 
-      if (updated) {
-        await Application.updateOne(
-          { _id: updated._id, status: "PAYMENT_PENDING" },
-          { $set: { status: "PAID" } }
-        );
-      } else {
+      if (!updated) {
         const existing = await Application.findOne({ "payment.linkId": link.id }).select("payment");
         if (existing && existing.payment.status !== "paid") {
           console.error(
@@ -329,10 +338,21 @@ export const razorpayWebhook = async (req, res) => {
         }
       }
     } else if (event === "payment_link.expired" || event === "payment_link.cancelled") {
-      await Application.updateOne(
-        { "payment.linkId": link.id, "payment.status": "link_sent" },
-        { $set: { "payment.status": event === "payment_link.expired" ? "expired" : "cancelled" } }
+      const paymentStatus = event === "payment_link.expired" ? "expired" : "cancelled";
+      const transitioned = await Application.updateOne(
+        {
+          "payment.linkId": link.id,
+          "payment.status": "link_sent",
+          status: "PAYMENT_PENDING",
+        },
+        { $set: { "payment.status": paymentStatus, status: "CONTACTED" } }
       );
+      if (transitioned.matchedCount === 0) {
+        await Application.updateOne(
+          { "payment.linkId": link.id, "payment.status": "link_sent" },
+          { $set: { "payment.status": paymentStatus } }
+        );
+      }
     }
     res.json({ received: true });
   } catch (e) {

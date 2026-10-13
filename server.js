@@ -9,6 +9,7 @@ import { globalLimiter } from "./middleware/rateLimiters.js";
 import connectDB from "./config/db.js";
 import { errorHandler } from "./middleware/error.middleware.js";
 import { razorpayWebhook } from "./controllers/razorpaywebhook.controller.js";
+import { razorpayWebhook as industrialTrainingRazorpayWebhook } from "./controllers/industrialTraining.controller.js";
 
 import authRoutes       from "./routes/auth.routes.js";
 import courseRoutes     from "./routes/course.routes.js";
@@ -50,13 +51,12 @@ app.use(cors({
 app.use(globalLimiter);
 app.set("etag", false);
 app.post("/api/webhooks/razorpay", express.raw({ type: "application/json", limit: "1mb" }), razorpayWebhook);
-// The Razorpay webhook signature is computed over the raw body, so keep a copy.
-app.use(express.json({
-  limit: "10mb",
-  verify: (req, res, buf) => {
-    if (req.originalUrl.startsWith("/api/industrial-training/payment/webhook")) req.rawBody = buf;
-  },
-}));
+app.post(
+  "/api/industrial-training/payment/webhook",
+  express.raw({ type: "application/json", limit: "1mb" }),
+  industrialTrainingRazorpayWebhook
+);
+app.use(express.json({ limit: "10mb" }));
 app.use(express.urlencoded({ extended: true, limit: "10mb" }));
 app.use(cookieParser());
 
