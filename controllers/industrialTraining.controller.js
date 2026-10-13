@@ -283,6 +283,9 @@ export const razorpayWebhook = async (req, res) => {
     return res.status(503).json({ success: false });
   }
   if (!Buffer.isBuffer(req.body)) {
+    console.error(
+      `[industrial-training webhook] expected raw body; received content-type ${req.get("content-type") || "unknown"}`
+    );
     return res.status(400).json({ success: false, message: "Expected raw body." });
   }
 
@@ -293,6 +296,7 @@ export const razorpayWebhook = async (req, res) => {
       : null;
   const expected = crypto.createHmac("sha256", secret).update(req.body).digest();
   if (!signatureBytes || !crypto.timingSafeEqual(expected, signatureBytes)) {
+    console.error("[industrial-training webhook] invalid signature; check RAZORPAY_WEBHOOK_SECRET");
     return res.status(400).json({ success: false, message: "Invalid signature." });
   }
 
@@ -300,6 +304,7 @@ export const razorpayWebhook = async (req, res) => {
   try {
     body = JSON.parse(req.body.toString("utf8"));
   } catch {
+    console.error("[industrial-training webhook] received malformed JSON");
     return res.status(400).json({ success: false, message: "Invalid payload." });
   }
 

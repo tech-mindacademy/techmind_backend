@@ -51,12 +51,12 @@ app.use(cors({
 app.set("etag", false);
 app.post(
   "/api/webhooks/razorpay",
-  express.raw({ type: "application/json", limit: "1mb" }),
+  express.raw({ type: "*/*", limit: "1mb" }),
   razorpayWebhook
 );
 app.post(
   "/api/industrial-training/payment/webhook",
-  express.raw({ type: "application/json", limit: "1mb" }),
+  express.raw({ type: "*/*", limit: "1mb" }),
   industrialTrainingRazorpayWebhook
 );
 
