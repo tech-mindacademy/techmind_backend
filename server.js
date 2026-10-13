@@ -8,6 +8,7 @@ import { globalLimiter } from "./middleware/rateLimiters.js";
 
 import connectDB from "./config/db.js";
 import { errorHandler } from "./middleware/error.middleware.js";
+import { razorpayWebhook } from "./controllers/razorpayWebhook.controller.js";
 
 import authRoutes       from "./routes/auth.routes.js";
 import courseRoutes     from "./routes/course.routes.js";
@@ -48,7 +49,7 @@ app.use(cors({
 
 app.use(globalLimiter);
 app.set("etag", false);
-
+app.post("/api/webhooks/razorpay", express.raw({ type: "application/json", limit: "1mb" }), razorpayWebhook);
 // The Razorpay webhook signature is computed over the raw body, so keep a copy.
 app.use(express.json({
   limit: "10mb",
