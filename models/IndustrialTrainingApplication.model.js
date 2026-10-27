@@ -12,7 +12,7 @@ export const DOMAINS = [
   "Mobile App Development (React Native)",
 ];
 
-export const DURATIONS = ["1 Month", "2 Months", "6 Months"];
+export const DURATIONS = ["1 Month", "3 Months", "6 Months"];
 
 // Transitions an admin can trigger directly. PAYMENT_PENDING, PAID and
 // CREDENTIALS_SENT are only reachable through the payment-link, webhook and
